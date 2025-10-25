@@ -253,6 +253,17 @@
             <div class="icon">📡</div>
             <h1>Helmet Intercom</h1>
             <p class="subtitle">Always-On Voice Link</p>
+            <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.2)); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 16px; margin-top: 20px; text-align: center;">
+                <div style="font-size: 14px; color: #10b981; font-weight: 600; margin-bottom: 8px;">🚀 LIVE & READY</div>
+                <div style="font-size: 13px; line-height: 1.6; color: #d1d5db; margin-bottom: 12px;">
+                    Turn any two iPhones into a wireless helmet intercom.<br>
+                    No apps. No subscriptions. Just peer-to-peer magic.<br>
+                    Built for the Himalayas. Works anywhere.
+                </div>
+                <a href="https://VikrantHD.github.io/helmet-intercom" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 10px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: transform 0.2s;">
+                    🔗 Open Live App
+                </a>
+            </div>
         </div>
 
         <div class="card">
@@ -278,6 +289,17 @@
                 Choose your position
             </div>
 
+            <div id="roomCodeDisplay" class="hidden" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 10px; padding: 15px; margin-bottom: 20px;">
+                <div style="text-align: center; margin-bottom: 8px; color: #10b981; font-weight: 600; font-size: 12px;">
+                    🔐 SECURE SESSION CODE
+                </div>
+                <div id="roomCodeText" style="text-align: center; font-family: monospace; font-size: 18px; font-weight: bold; letter-spacing: 2px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 5px; word-break: break-all;">
+                </div>
+                <div style="text-align: center; margin-top: 8px; color: #a0a0a0; font-size: 11px;">
+                    Share this code with your pillion only
+                </div>
+            </div>
+
             <div id="errorDiv" class="error hidden">
                 <span class="error-icon">⚠️</span>
                 <span id="errorText"></span>
@@ -286,11 +308,15 @@
             <div id="roleSelection">
                 <button class="btn-driver" onclick="startAsDriver()">
                     <span class="emoji">🏍️</span>
-                    <span>DRIVER</span>
+                    <span>DRIVER (Create Room)</span>
                 </button>
+                <div style="text-align: center; margin: 15px 0; color: #666; font-size: 14px;">OR</div>
+                <div style="margin-bottom: 10px;">
+                    <input type="text" id="joinRoomCode" placeholder="Enter room code from driver" style="width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: white; font-size: 16px; text-align: center; font-family: monospace; letter-spacing: 1px;" />
+                </div>
                 <button class="btn-pillion" onclick="startAsPillion()">
                     <span class="emoji">👤</span>
-                    <span>PILLION</span>
+                    <span>PILLION (Join Room)</span>
                 </button>
             </div>
 
@@ -319,10 +345,10 @@
             <ol>
                 <li><strong>Driver</strong>: Turn on Personal Hotspot</li>
                 <li><strong>Pillion</strong>: Connect to hotspot WiFi</li>
-                <li><strong>Driver</strong>: Tap DRIVER button first</li>
-                <li><strong>Pillion</strong>: Wait 5 sec, tap PILLION</li>
-                <li>Allow microphone when asked</li>
-                <li>Wait for connection - Ride safe! 🏔️</li>
+                <li><strong>Driver</strong>: Tap "Create Room" - you'll get a secret code</li>
+                <li><strong>Driver</strong>: Share code with pillion (verbally or text)</li>
+                <li><strong>Pillion</strong>: Enter code and tap "Join Room"</li>
+                <li>Allow microphone - Ride safe! 🏔️</li>
             </ol>
         </div>
 
@@ -338,8 +364,10 @@
         let isMuted = false;
         let isConnected = false;
         let myRole = null;
+        let currentRoomCode = null;
 
-        const roomCode = 'himalaya-' + new Date().toISOString().split('T')[0];
+        // Generate secure random room code (only valid for this session)
+        const roomCode = 'ride-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
         function showError(message) {
             document.getElementById('errorDiv').classList.remove('hidden');
@@ -425,9 +453,16 @@
             }
         }
 
-        function initializePeer(role) {
+        function initializePeer(role, roomCode) {
             myRole = role;
+            currentRoomCode = roomCode;
             const myId = `${roomCode}-${role}`;
+            
+            // Display room code for driver
+            if (role === 'driver') {
+                document.getElementById('roomCodeDisplay').classList.remove('hidden');
+                document.getElementById('roomCodeText').textContent = roomCode;
+            }
             
             peer = new Peer(myId, {
                 debug: 0,
@@ -447,7 +482,7 @@
                     setStatus('Waiting for pillion to connect...');
                 } else {
                     setStatus('Connecting to driver...');
-                    setTimeout(() => connectToDriver(), 2000);
+                    setTimeout(() => connectToDriver(roomCode), 2000);
                 }
             });
 
@@ -481,7 +516,7 @@
                 if (err.type === 'peer-unavailable') {
                     setStatus('Rider not found. Waiting...');
                     if (role === 'pillion') {
-                        setTimeout(() => connectToDriver(), 3000);
+                        setTimeout(() => connectToDriver(roomCode), 3000);
                     }
                 } else {
                     showError('Connection error: ' + err.type);
@@ -499,7 +534,7 @@
             });
         }
 
-        function connectToDriver() {
+        function connectToDriver(roomCode) {
             if (!peer || peer.destroyed) return;
 
             const driverId = `${roomCode}-driver`;
@@ -555,12 +590,23 @@
                 return;
             }
 
+            // Generate secure random room code
+            const roomCode = 'ride-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            
             setStatus('Initializing...');
-            initializePeer('driver');
+            initializePeer('driver', roomCode);
         }
 
         async function startAsPillion() {
             hideError();
+            
+            // Get room code from input
+            const roomCodeInput = document.getElementById('joinRoomCode').value.trim();
+            if (!roomCodeInput) {
+                showError('Please enter the room code from driver');
+                return;
+            }
+            
             setStatus('Requesting microphone...');
             showWaiting();
             
@@ -571,7 +617,7 @@
             }
 
             setStatus('Initializing...');
-            initializePeer('pillion');
+            initializePeer('pillion', roomCodeInput);
         }
 
         function toggleMute() {
@@ -624,11 +670,14 @@
             isConnected = false;
             isMuted = false;
             myRole = null;
+            currentRoomCode = null;
             
             setStatus('Choose your position', false);
             showRoleSelection();
             hideError();
             document.getElementById('audioLevel').classList.add('hidden');
+            document.getElementById('roomCodeDisplay').classList.add('hidden');
+            document.getElementById('joinRoomCode').value = '';
             document.getElementById('techInfo').textContent = '';
         }
 

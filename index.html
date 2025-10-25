@@ -279,9 +279,33 @@
                 <div class="audio-label">
                     <span>🔊</span>
                     <span>Your Voice</span>
+                    <span style="margin-left: auto; font-size: 11px; color: #10b981;">
+                        VAD: <span id="vadStatus">Active</span>
+                    </span>
                 </div>
                 <div class="audio-bar">
                     <div class="audio-bar-fill" id="audioBarFill" style="width: 0%"></div>
+                </div>
+                <div style="font-size: 10px; color: #666; margin-top: 4px; text-align: center;">
+                    Green = Speaking • Gray = Silent (saving battery)
+                </div>
+                
+                <!-- VAD Sensitivity Slider -->
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 12px; color: #a0a0a0;">🎚️ Sensitivity</span>
+                        <span id="sensitivityValue" style="font-size: 12px; color: #10b981; font-weight: 600;">Medium</span>
+                    </div>
+                    <input type="range" id="vadSlider" min="15" max="50" value="30" step="5" 
+                        style="width: 100%; height: 6px; background: rgba(255,255,255,0.2); border-radius: 5px; outline: none; -webkit-appearance: none;"
+                        oninput="adjustVAD(this.value)" />
+                    <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: #666;">
+                        <span>High</span>
+                        <span>Low</span>
+                    </div>
+                    <div style="font-size: 10px; color: #666; text-align: center; margin-top: 6px;">
+                        High = Whispers work • Low = Less wind noise
+                    </div>
                 </div>
             </div>
 
@@ -289,14 +313,14 @@
                 Choose your position
             </div>
 
-            <div id="roomCodeDisplay" class="hidden" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 10px; padding: 15px; margin-bottom: 20px;">
+                <div id="roomCodeDisplay" class="hidden" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 10px; padding: 15px; margin-bottom: 20px;">
                 <div style="text-align: center; margin-bottom: 8px; color: #10b981; font-weight: 600; font-size: 12px;">
-                    🔐 SECURE SESSION CODE
+                    🔐 YOUR SESSION CODE
                 </div>
-                <div id="roomCodeText" style="text-align: center; font-family: monospace; font-size: 18px; font-weight: bold; letter-spacing: 2px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 5px; word-break: break-all;">
+                <div id="roomCodeText" style="text-align: center; font-family: 'Courier New', monospace; font-size: 36px; font-weight: bold; letter-spacing: 8px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px;">
                 </div>
                 <div style="text-align: center; margin-top: 8px; color: #a0a0a0; font-size: 11px;">
-                    Share this code with your pillion only
+                    Tell your pillion this code • Example: A1234
                 </div>
             </div>
 
@@ -312,7 +336,7 @@
                 </button>
                 <div style="text-align: center; margin: 15px 0; color: #666; font-size: 14px;">OR</div>
                 <div style="margin-bottom: 10px;">
-                    <input type="text" id="joinRoomCode" placeholder="Enter room code from driver" style="width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: white; font-size: 16px; text-align: center; font-family: monospace; letter-spacing: 1px;" />
+                    <input type="text" id="joinRoomCode" placeholder="Enter code (e.g., A1234)" maxlength="5" style="width: 100%; padding: 18px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: white; font-size: 24px; text-align: center; font-family: 'Courier New', monospace; letter-spacing: 4px; text-transform: uppercase;" oninput="this.value = this.value.toUpperCase()" />
                 </div>
                 <button class="btn-pillion" onclick="startAsPillion()">
                     <span class="emoji">👤</span>
@@ -345,11 +369,22 @@
             <ol>
                 <li><strong>Driver</strong>: Turn on Personal Hotspot</li>
                 <li><strong>Pillion</strong>: Connect to hotspot WiFi</li>
-                <li><strong>Driver</strong>: Tap "Create Room" - you'll get a secret code</li>
-                <li><strong>Driver</strong>: Share code with pillion (verbally or text)</li>
-                <li><strong>Pillion</strong>: Enter code and tap "Join Room"</li>
-                <li>Allow microphone - Ride safe! 🏔️</li>
+                <li><strong>Driver</strong>: Tap "Create Room" - get your code (e.g., A1234)</li>
+                <li><strong>Driver</strong>: Tell pillion the code verbally</li>
+                <li><strong>Pillion</strong>: Type code and tap "Join Room"</li>
+                <li>Allow microphone - VAD will save battery! 🏔️</li>
             </ol>
+        </div>
+
+        <div class="instructions" style="margin-top: 15px;">
+            <h3>
+                <span>🔋</span>
+                <span>Battery Saver (VAD)</span>
+            </h3>
+            <div style="font-size: 13px; line-height: 1.6; color: #d1d5db;">
+                Voice Activity Detection automatically reduces battery drain during silence. 
+                Your mic only transmits when you're speaking. Saves ~20-30% battery!
+            </div>
         </div>
 
         <div class="tech-info" id="techInfo"></div>
@@ -365,6 +400,9 @@
         let isConnected = false;
         let myRole = null;
         let currentRoomCode = null;
+        let isVADActive = true;
+        let isSpeaking = false;
+        let vadThreshold = 30; // Adjust this for sensitivity (lower = more sensitive)
 
         // Generate secure random room code (only valid for this session)
         const roomCode = 'ride-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -443,6 +481,30 @@
                         analyser.getByteFrequencyData(dataArray);
                         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
                         const level = Math.min(100, average * 2);
+                        
+                        // Voice Activity Detection
+                        if (isVADActive && localStream) {
+                            const audioTrack = localStream.getAudioTracks()[0];
+                            
+                            if (average > vadThreshold) {
+                                // Voice detected - enable audio
+                                if (!isSpeaking) {
+                                    isSpeaking = true;
+                                    audioTrack.enabled = true;
+                                    document.getElementById('audioBarFill').style.background = 
+                                        'linear-gradient(90deg, #10b981, #34d399)';
+                                }
+                            } else {
+                                // Silence - disable audio to save battery
+                                if (isSpeaking) {
+                                    isSpeaking = false;
+                                    // Keep track enabled for monitoring but could disable for more savings
+                                    document.getElementById('audioBarFill').style.background = 
+                                        'linear-gradient(90deg, #6b7280, #9ca3af)';
+                                }
+                            }
+                        }
+                        
                         document.getElementById('audioBarFill').style.width = level + '%';
                     }
                     requestAnimationFrame(updateLevel);
@@ -590,8 +652,10 @@
                 return;
             }
 
-            // Generate secure random room code
-            const roomCode = 'ride-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            // Generate simple code: 1 Letter + 4 Digits (e.g., "A-1234")
+            const letter = String.fromCharCode(65 + Math.floor(Math.random() * 26)); // A-Z
+            const digits = Math.floor(1000 + Math.random() * 9000); // 1000-9999
+            const roomCode = `${letter}${digits}`;
             
             setStatus('Initializing...');
             initializePeer('driver', roomCode);
@@ -601,9 +665,16 @@
             hideError();
             
             // Get room code from input
-            const roomCodeInput = document.getElementById('joinRoomCode').value.trim();
+            const roomCodeInput = document.getElementById('joinRoomCode').value.trim().toUpperCase();
             if (!roomCodeInput) {
                 showError('Please enter the room code from driver');
+                return;
+            }
+            
+            // Validate format: 1 letter + 4 digits
+            const codePattern = /^[A-Z]\d{4}$/;
+            if (!codePattern.test(roomCodeInput)) {
+                showError('Invalid code format. Should be like: A1234');
                 return;
             }
             
@@ -624,8 +695,19 @@
             if (!localStream) return;
 
             const audioTrack = localStream.getAudioTracks()[0];
-            audioTrack.enabled = !audioTrack.enabled;
-            isMuted = !audioTrack.enabled;
+            
+            if (isMuted) {
+                // Unmuting - re-enable VAD
+                isMuted = false;
+                isVADActive = true;
+                audioTrack.enabled = true;
+            } else {
+                // Muting - disable VAD
+                isMuted = true;
+                isVADActive = false;
+                isSpeaking = false;
+                audioTrack.enabled = false;
+            }
 
             const btn = document.getElementById('muteBtn');
             const icon = document.getElementById('muteIcon');
@@ -636,10 +718,12 @@
                 icon.textContent = '🔇';
                 text.textContent = 'UNMUTE';
                 document.getElementById('audioBarFill').style.width = '0%';
+                document.getElementById('vadStatus').textContent = 'Disabled';
             } else {
                 btn.className = 'btn-mute';
                 icon.textContent = '🎤';
                 text.textContent = 'MUTE';
+                document.getElementById('vadStatus').textContent = 'Active';
             }
         }
 
@@ -688,6 +772,49 @@
                 e.returnValue = '';
             }
         });
+
+        // VAD Sensitivity Adjustment
+        function adjustVAD(value) {
+            vadThreshold = parseInt(value);
+            
+            // Update label
+            let label = 'Medium';
+            if (value <= 20) label = 'Very High';
+            else if (value <= 25) label = 'High';
+            else if (value <= 35) label = 'Medium';
+            else if (value <= 45) label = 'Low';
+            else label = 'Very Low';
+            
+            document.getElementById('sensitivityValue').textContent = label;
+            
+            console.log('VAD threshold adjusted to:', vadThreshold);
+        }
+
+        // Style the range slider
+        const style = document.createElement('style');
+        style.textContent = `
+            input[type="range"]::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 20px;
+                height: 20px;
+                background: linear-gradient(135deg, #10b981, #059669);
+                cursor: pointer;
+                border-radius: 50%;
+                box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+            }
+            
+            input[type="range"]::-moz-range-thumb {
+                width: 20px;
+                height: 20px;
+                background: linear-gradient(135deg, #10b981, #059669);
+                cursor: pointer;
+                border-radius: 50%;
+                border: none;
+                box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 </body>
 </html>

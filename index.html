@@ -1,397 +1,13 @@
-            
-            showDashboard() {
-                this.showScreen('dashboardScreen');
-                this.updateBatteryDisplay();
-            }
-            
-            async switchMode(mode) {
-                this.state.mode = mode;
-                
-                document.getElementById('basicModeBtn').classList.toggle('active', mode === 'basic');
-                document.getElementById('proModeBtn').classList.toggle('active', mode === 'pro');
-                
-                document.getElementById('basicHeader').classList.toggle('hidden', mode === 'pro');
-                document.getElementById('proHeader').classList.toggle('hidden', mode === 'basic');
-                document.getElementById('batteryDisplay').classList.toggle('hidden', mode === 'pro');
-                document.getElementById('batteryCircle').classList.toggle('hidden', mode === 'basic');
-                document.getElementById('proControls').classList.toggle('hidden', mode === 'basic');
-                
-                document.getElementById('currentMode').textContent = mode === 'basic' ? 'Basic' : 'Pro';
-                
-                // Enable/disable protocol VAD
-                if (mode === 'pro' && this.localStream) {
-                    await this.downgradeAudioQuality(); // Start in low-power
-                    this.startProtocolVAD();
-                } else if (mode === 'basic' && this.localStream) {
-                    await this.upgradeAudioQuality(); // Always full quality
-                }
-                
-                // Enable transcription in Pro mode
-                if (mode === 'pro' && !this.state.transcriptionEnabled) {
-                    this.state.transcriptionEnabled = true;
-                    this.startTranscription();
-                } else if (mode === 'basic' && this.state.transcriptionEnabled) {
-                    this.state.transcriptionEnabled = false;
-                    this.stopTranscription();
-                }
-                
-                this.updateBatteryDisplay();
-            }
-            
-            adjustVAD(value) {
-                this.state.vadThreshold = parseInt(value);
-                
-                let label = 'Medium';
-                if (value <= 20) label = 'Very High';
-                else if (value <= 25) label = 'High';
-                else if (value <= 35) label = 'Medium';
-                else if (value <= 45) label = 'Low';
-                else label = 'Very Low';
-                
-                document.getElementById('sensitivityLabel').textContent = label;
-            }
-            
-            toggleMute() {
-                this.state.muted = !this.state.muted;
-                
-                const icon = document.getElementById('muteIcon');
-                const text = document.getElementById('muteText');
-                const btn = document.getElementById('muteBtn');
-                
-                if (this.state.muted) {
-                    icon.textContent = '🔇';
-                    text.textContent = 'Unmute';
-                    btn.style.background = '#ef4444';
-                } else {
-                    icon.textContent = '🎤';
-                    text.textContent = 'Mute';
-                    btn.style.background = '#000';
-                }
-                
-                if (this.localStream) {
-                    this.localStream.getAudioTracks()[0].enabled = !this.state.muted;
-                }
-            }
-            
-            toggleLanguage() {
-                const langs = {
-                    'en-IN': 'English',
-                    'hi-IN': 'हिंदी',
-                    'mr-IN': 'मराठी'
-                };
-                
-                const keys = Object.keys(langs);
-                const currentIndex = keys.indexOf(this.state.language);
-                const nextIndex = (currentIndex + 1) % keys.length;
-                this.state.language = keys[nextIndex];
-                
-                document.getElementById('currentLang').textContent = langs[this.state.language] + ' ›';
-                
-                // Update recognition language
-                if (this.recognition) {
-                    this.recognition.lang = this.state.language;
-                    this.recognition.stop();
-                    setTimeout(() => {
-                        if (this.state.transcriptionEnabled) {
-                            this.recognition.start();
-                        }
-                    }, 100);
-                }
-            }
-            
-            monitorBattery() {
-                if ('getBattery' in navigator) {
-                    navigator.getBattery().then(battery => {
-                        const updateBattery = () => {
-                            this.state.batteryPercent = Math.round(battery.level * 100);
-                            this.updateBatteryDisplay();
-                        };
-                        
-                        updateBattery();
-                        battery.addEventListener('levelchange', updateBattery);
-                        battery.addEventListener('chargingchange', updateBattery);
-                    });
-                }
-            }
-            
-            startBatteryMonitoring() {
-                setInterval(() => {
-                    this.state.totalTime++;
-                    this.updateBatteryDisplay();
-                }, 60000); // Update every minute
-            }
-            
-            updateBatteryDisplay() {
-                const percent = this.state.batteryPercent;
-                const isPro = this.state.mode === 'pro';
-                
-                // Calculate remaining time based on mode
-                const drainRate = isPro ? 12 : 20; // % per hour
-                const hoursLeft = percent / drainRate;
-                const hours = Math.floor(hoursLeft);
-                const minutes = Math.round((hoursLeft - hours) * 60);
-                
-                const timeStr = hours > 0 ? `${hours}h ${minutes}m remaining` : `${minutes}m remaining`;
-                
-                document.getElementById('batteryPercent').textContent = `${percent}%`;
-                document.getElementById('batteryTime').textContent = timeStr;
-                document.getElementById('batteryPctCircle').textContent = `${percent}%`;
-                document.getElementById('batteryTimeCircle').textContent = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-                
-                const circle = document.getElementById('batteryCircle');
-                circle.style.setProperty('--battery-percent', `${percent}%`);
-                
-                // Update active/standby percentages for Pro mode
-                if (isPro && this.state.totalTime > 0) {
-                    const activePercent = Math.round((this.state.activeTime / this.state.totalTime) * 100);
-                    const standbyPercent = 100 - activePercent;
-                    document.getElementById('activePercent').textContent = `${Math.min(activePercent, 99)}%`;
-                    document.getElementById('standbyPercent').textContent = `${Math.max(standbyPercent, 1)}%`;
-                }
-                
-                // Update signal quality (simulated based on connection)
-                if (this.state.connected && this.call) {
-                    const stats = this.call.peerConnection ? 'Strong' : 'Good';
-                    document.getElementById('signalQuality').textContent = stats;
-                }
-            }
-            
-            setupMessageCleanup() {
-                // Clear messages every minute and check if any are older than 10 min
-                setInterval(() => {
-                    const now = Date.now();
-                    const initialLength = this.state.messages.length;
-                    
-                    this.state.messages = this.state.messages.filter(msg => {
-                        return (now - msg.timestamp) < 600000; // 10 minutes
-                    });
-                    
-                    if (this.state.messages.length !== initialLength) {
-                        this.renderMessages();
-                    }
-                    
-                    // Update countdown timer
-                    if (this.state.messages.length > 0) {
-                        const oldestMessage = this.state.messages[0];
-                        const age = Math.floor((now - oldestMessage.timestamp) / 60000);
-                        const remaining = 10 - age;
-                        document.getElementById('clearTimer').textContent = Math.max(remaining, 0);
-                    }
-                }, 60000);
-            }
-            
-            addMessage(sender, text) {
-                this.state.messages.push({
-                    sender: sender,
-                    text: text,
-                    timestamp: Date.now()
-                });
-                
-                // Keep only last 10 messages
-                if (this.state.messages.length > 10) {
-                    this.state.messages.shift();
-                }
-                
-                this.renderMessages();
-            }
-            
-            renderMessages() {
-                const container = document.getElementById('messageList');
-                if (!container) return;
-                
-                container.innerHTML = '';
-                
-                this.state.messages.forEach(msg => {
-                    const div = document.createElement('div');
-                    div.className = `msg ${msg.sender === 'you' ? 'mine' : ''}`;
-                    
-                    const elapsed = Math.floor((Date.now() - msg.timestamp) / 60000);
-                    const timeStr = elapsed === 0 ? 'Now' : elapsed === 1 ? '1m ago' : `${elapsed}m ago`;
-                    
-                    div.innerHTML = `
-                        <div class="msg-header">
-                            <span class="msg-sender">${msg.sender === 'you' ? 'You' : 'Them'}</span>
-                            <span class="msg-time">${timeStr}</span>
-                        </div>
-                        <div class="msg-text">${this.escapeHtml(msg.text)}</div>
-                    `;
-                    
-                    container.appendChild(div);
-                });
-                
-                container.scrollTop = container.scrollHeight;
-            }
-            
-            escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-            
-            disconnect() {
-                if (confirm('End this session?')) {
-                    // Stop all streams
-                    if (this.localStream) {
-                        this.localStream.getTracks().forEach(track => track.stop());
-                        this.localStream = null;
-                    }
-                    
-                    if (this.remoteStream) {
-                        this.remoteStream.getTracks().forEach(track => track.stop());
-                        this.remoteStream = null;
-                    }
-                    
-                    // Close connections
-                    if (this.call) {
-                        this.call.close();
-                        this.call = null;
-                    }
-                    
-                    if (this.peer) {
-                        this.peer.destroy();
-                        this.peer = null;
-                    }
-                    
-                    // Stop transcription
-                    if (this.recognition) {
-                        this.recognition.stop();
-                        this.recognition = null;
-                    }
-                    
-                    // Stop audio analysis
-                    if (this.audioContext) {
-                        this.audioContext.close();
-                        this.audioContext = null;
-                    }
-                    
-                    // Clear timers
-                    if (this.silenceTimer) {
-                        clearTimeout(this.silenceTimer);
-                        this.silenceTimer = null;
-                    }
-                    
-                    // Reset state
-                    this.state = {
-                        role: null,
-                        mode: 'basic',
-                        connected: false,
-                        muted: false,
-                        sessionCode: null,
-                        batteryPercent: this.state.batteryPercent,
-                        language: 'en-IN',
-                        vadThreshold: 30,
-                        messages: [],
-                        activeTime: 0,
-                        totalTime: 0,
-                        transcriptionEnabled: false,
-                        isSpeaking: false
-                    };
-                    
-                    // Reset UI
-                    this.showScreen('setupScreen');
-                    document.getElementById('joinCode').value = '';
-                    document.getElementById('basicModeBtn').classList.add('active');
-                    document.getElementById('proModeBtn').classList.remove('active');
-                    
-                    // Restore music volume
-                    this.duckAudio(1.0);
-                }
-            }
-            
-            showScreen(screenId) {
-                document.getElementById('setupScreen').classList.add('hidden');
-                document.getElementById('codeScreen').classList.add('hidden');
-                document.getElementById('dashboardScreen').classList.add('hidden');
-                
-                document.getElementById(screenId).classList.remove('hidden');
-            }
-            
-            showError(message) {
-                const errorDiv = document.getElementById('setupError');
-                errorDiv.textContent = message;
-                errorDiv.classList.remove('hidden');
-            }
-            
-            hideError() {
-                document.getElementById('setupError').classList.add('hidden');
-            }
-        }
-        
-        // Initialize app
-        window.app = new DhvaniWT();
-        
-        // Prevent accidental navigation
-        window.addEventListener('beforeunload', (e) => {
-            if (window.app.state.connected) {
-                e.preventDefault();
-                e.returnValue = 'You have an active connection. Are you sure you want to leave?';
-            }
-        });
-        
-        // Handle page visibility for call detection
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                console.log('Page hidden - possible phone call');
-            } else {
-                console.log('Page visible - resuming');
-            }
-        });
-        
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (!window.app.state.connected) return;
-            
-            // Space bar = toggle mute
-            if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
-                e.preventDefault();
-                window.app.toggleMute();
-            }
-            
-            // M key = toggle mute
-            if (e.key === 'm' || e.key === 'M') {
-                if (e.target.tagName !== 'INPUT') {
-                    window.app.toggleMute();
-                }
-            }
-        });
-        
-        // Service Worker for offline capability (optional)
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                // Service worker registration commented out for now
-                // Can be enabled for PWA functionality
-            });
-        }
-        
-        // Error boundary
-        window.addEventListener('error', (event) => {
-            console.error('Global error:', event.error);
-            if (window.app && window.app.state.connected) {
-                // Don't show error to user for minor issues
-                // Major issues will be caught by try-catch blocks
-            }
-        });
-        
-        window.addEventListener('unhandledrejection', (event) => {
-            console.error('Unhandled promise rejection:', event.reason);
-        });
-    </script>
-</body>
-</html><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Dhvani-WT - Always-On Voice</title>
+    <title>Dhvani-WT</title>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -403,31 +19,20 @@
             justify-content: center;
             padding: 20px;
             position: relative;
-            overflow-x: hidden;
         }
         
         body::before {
             content: '';
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-image: 
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: 
                 repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(255,140,0,0.03) 35px, rgba(255,140,0,0.03) 70px),
-                repeating-linear-gradient(-45deg, transparent, transparent 35px, rgba(138,43,226,0.02) 35px, rgba(138,43,226,0.02) 70px),
-                radial-gradient(circle at 20% 50%, rgba(255,165,0,0.05) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(255,105,180,0.04) 0%, transparent 50%);
+                radial-gradient(circle at 20% 50%, rgba(255,165,0,0.05) 0%, transparent 50%);
             pointer-events: none;
             z-index: 0;
         }
         
-        .container {
-            max-width: 500px;
-            width: 100%;
-            position: relative;
-            z-index: 1;
-        }
+        .container { max-width: 500px; width: 100%; position: relative; z-index: 1; }
         
         .screen {
             background: #fff;
@@ -439,20 +44,6 @@
             overflow: hidden;
         }
         
-        .screen::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: 
-                radial-gradient(circle at 10% 20%, rgba(255,165,0,0.02) 0%, transparent 25%),
-                radial-gradient(circle at 90% 80%, rgba(255,105,180,0.02) 0%, transparent 25%);
-            pointer-events: none;
-            z-index: 0;
-        }
-        
         .status-bar {
             height: 50px;
             display: flex;
@@ -461,30 +52,17 @@
             padding: 0 20px;
             font-size: 14px;
             font-weight: 500;
-            position: relative;
-            z-index: 1;
         }
         
-        .content {
-            padding: 0 24px 30px;
-            position: relative;
-            z-index: 1;
-        }
+        .content { padding: 0 24px 30px; }
         
-        .hero {
-            text-align: center;
-            padding: 60px 0 50px;
-        }
+        .hero { text-align: center; padding: 60px 0 50px; }
         
         .app-name {
             font-size: 42px;
             font-weight: 700;
             margin-bottom: 8px;
             letter-spacing: 3px;
-            background: linear-gradient(135deg, #000 0%, #333 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
         }
         
         .app-subtitle {
@@ -508,30 +86,10 @@
             align-items: center;
             justify-content: center;
             gap: 12px;
-            transition: transform 0.2s, background 0.2s;
         }
         
-        .btn:active {
-            transform: scale(0.98);
-        }
-        
-        .btn-primary {
-            background: #000;
-            color: #fff;
-        }
-        
-        .btn-primary:active {
-            background: #333;
-        }
-        
-        .btn-secondary {
-            background: #f5f5f5;
-            color: #000;
-        }
-        
-        .btn-secondary:active {
-            background: #e0e0e0;
-        }
+        .btn-primary { background: #000; color: #fff; }
+        .btn-secondary { background: #f5f5f5; color: #000; }
         
         .divider {
             text-align: center;
@@ -539,11 +97,9 @@
             color: #999;
             font-size: 14px;
             position: relative;
-            font-weight: 500;
         }
         
-        .divider::before,
-        .divider::after {
+        .divider::before, .divider::after {
             content: '';
             position: absolute;
             top: 50%;
@@ -563,22 +119,11 @@
             border-radius: 12px;
             font-size: 32px;
             text-align: center;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             letter-spacing: 8px;
             font-weight: 700;
             margin-bottom: 16px;
             text-transform: uppercase;
-            outline: none;
-            transition: border-color 0.2s, background 0.2s;
-        }
-        
-        .input:focus {
-            border-color: #000;
-            background: #fff;
-        }
-        
-        .input::placeholder {
-            color: #ccc;
         }
         
         .card {
@@ -587,21 +132,6 @@
             border-radius: 16px;
             padding: 24px;
             margin-bottom: 20px;
-        }
-        
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        
-        .card-title {
-            font-size: 13px;
-            color: #999;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: 500;
         }
         
         .status-live {
@@ -622,8 +152,8 @@
         }
         
         @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.1); }
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
         }
         
         .big-num {
@@ -631,41 +161,9 @@
             font-weight: 700;
             line-height: 1;
             margin: 12px 0;
-            letter-spacing: -2px;
         }
         
-        .sub {
-            font-size: 15px;
-            color: #999;
-        }
-        
-        .info-row {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        
-        .info-box {
-            flex: 1;
-            background: #f5f5f5;
-            border-radius: 12px;
-            padding: 16px;
-        }
-        
-        .info-label {
-            font-size: 11px;
-            color: #666;
-            margin-bottom: 6px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 500;
-        }
-        
-        .info-value {
-            font-size: 20px;
-            font-weight: 700;
-            color: #000;
-        }
+        .sub { font-size: 15px; color: #999; }
         
         .mode-toggle {
             background: #f5f5f5;
@@ -686,203 +184,11 @@
             font-weight: 600;
             color: #666;
             cursor: pointer;
-            transition: all 0.2s;
         }
         
-        .mode-btn.active {
-            background: #000;
-            color: #fff;
-        }
+        .mode-btn.active { background: #000; color: #fff; }
         
-        .pro-header {
-            background: linear-gradient(135deg, #000, #333);
-            color: #fff;
-            padding: 24px;
-            margin: -24px -24px 20px;
-            border-radius: 16px 16px 0 0;
-        }
-        
-        .badge {
-            background: #00d66b;
-            color: #000;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 700;
-            margin-bottom: 12px;
-            display: inline-block;
-            letter-spacing: 0.5px;
-        }
-        
-        .battery-circle {
-            width: 140px;
-            height: 140px;
-            margin: 30px auto;
-            background: conic-gradient(#00d66b 0% var(--battery-percent), #f5f5f5 var(--battery-percent) 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .battery-inner {
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            background: #fff;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .battery-pct {
-            font-size: 42px;
-            font-weight: 700;
-            color: #000;
-            line-height: 1;
-        }
-        
-        .battery-time {
-            font-size: 13px;
-            color: #666;
-            margin-top: 4px;
-        }
-        
-        .slider-wrap {
-            margin: 24px 0;
-        }
-        
-        .slider-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 16px;
-        }
-        
-        .slider-label {
-            font-size: 14px;
-            color: #666;
-            font-weight: 500;
-        }
-        
-        .slider-value {
-            font-size: 14px;
-            font-weight: 700;
-        }
-        
-        .slider {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 100%;
-            height: 4px;
-            background: #e0e0e0;
-            border-radius: 2px;
-            outline: none;
-            margin-bottom: 12px;
-        }
-        
-        .slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 24px;
-            height: 24px;
-            background: #000;
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-        
-        .slider::-moz-range-thumb {
-            width: 24px;
-            height: 24px;
-            background: #000;
-            border-radius: 50%;
-            cursor: pointer;
-            border: none;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-        
-        .slider-marks {
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            color: #999;
-        }
-        
-        .lang-bar {
-            background: #f5f5f5;
-            border-radius: 12px;
-            padding: 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            cursor: pointer;
-        }
-        
-        .lang-label {
-            font-size: 14px;
-            color: #666;
-            font-weight: 500;
-        }
-        
-        .lang-value {
-            font-size: 15px;
-            font-weight: 600;
-        }
-        
-        .messages {
-            max-height: 300px;
-            overflow-y: auto;
-            margin-bottom: 20px;
-        }
-        
-        .msg {
-            background: #f5f5f5;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 12px;
-        }
-        
-        .msg.mine {
-            background: #000;
-            color: #fff;
-        }
-        
-        .msg-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 12px;
-        }
-        
-        .msg-sender {
-            font-weight: 600;
-        }
-        
-        .msg-time {
-            color: #999;
-        }
-        
-        .msg.mine .msg-time {
-            color: #666;
-        }
-        
-        .msg-text {
-            font-size: 15px;
-            line-height: 1.4;
-        }
-        
-        .note {
-            text-align: center;
-            font-size: 12px;
-            color: #999;
-            margin-top: 12px;
-        }
-        
-        .hidden {
-            display: none !important;
-        }
+        .hidden { display: none !important; }
         
         .error {
             background: rgba(239, 68, 68, 0.1);
@@ -892,7 +198,6 @@
             margin-bottom: 20px;
             color: #ef4444;
             font-size: 14px;
-            line-height: 1.5;
         }
         
         .code-display {
@@ -903,31 +208,15 @@
             margin-bottom: 20px;
         }
         
-        .code-label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
         .code {
             font-size: 48px;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             letter-spacing: 12px;
             font-weight: 700;
             color: #000;
         }
         
-        @media (max-width: 480px) {
-            .app-name {
-                font-size: 32px;
-            }
-            
-            .big-num {
-                font-size: 48px;
-            }
-        }
+        .note { text-align: center; font-size: 12px; color: #999; margin-top: 12px; }
     </style>
 </head>
 <body>
@@ -939,930 +228,237 @@
             </div>
             
             <div class="content">
-                
-                <!-- Setup Screen -->
                 <div id="setupScreen">
                     <div class="hero">
                         <div class="app-name">DHVANI-WT</div>
                         <div class="app-subtitle">Always-On Voice</div>
                     </div>
                     
-                    <button class="btn btn-primary" onclick="app.startHost()">
+                    <button class="btn btn-primary" onclick="startHost()">
                         <span style="font-size: 24px;">📍</span>
                         <span>Host</span>
                     </button>
                     
                     <div class="divider">or</div>
                     
-                    <input type="text" id="joinCode" class="input" placeholder="A1234" maxlength="5" oninput="this.value = this.value.toUpperCase()">
+                    <input type="text" id="joinCode" class="input" placeholder="A1234" maxlength="5">
                     
-                    <button class="btn btn-secondary" onclick="app.startJoin()">
+                    <button class="btn btn-secondary" onclick="startJoin()">
                         <span style="font-size: 24px;">🔗</span>
                         <span>Join</span>
                     </button>
                     
-                    <div id="setupError" class="error hidden"></div>
+                    <div id="error" class="error hidden"></div>
                 </div>
                 
-                <!-- Code Display (temporary) -->
                 <div id="codeScreen" class="hidden">
                     <div class="code-display">
-                        <div class="code-label">🔐 Your Session Code</div>
+                        <div style="font-size: 12px; color: #666; margin-bottom: 8px;">🔐 YOUR CODE</div>
                         <div class="code" id="sessionCode">B4729</div>
                         <div class="note">Share this with your partner</div>
                     </div>
                 </div>
                 
-                <!-- Dashboard Screen -->
-                <div id="dashboardScreen" class="hidden">
+                <div id="dashboard" class="hidden">
                     <div class="card">
-                        <div id="proHeader" class="pro-header hidden">
-                            <span class="badge">PRO • 70% SAVINGS</span>
-                            <div class="status-live" style="margin-top: 8px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="font-size: 13px; color: #999;">BATTERY</span>
+                            <div class="status-live">
                                 <span class="dot"></span>
                                 <span>LIVE</span>
                             </div>
                         </div>
-                        
-                        <div id="basicHeader">
-                            <div class="card-header">
-                                <span class="card-title">Battery</span>
-                                <div class="status-live">
-                                    <span class="dot"></span>
-                                    <span>LIVE</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="batteryDisplay">
-                            <div class="big-num" id="batteryPercent">85%</div>
-                            <div class="sub" id="batteryTime">Calculating...</div>
-                        </div>
-                        
-                        <div id="batteryCircle" class="battery-circle hidden" style="--battery-percent: 85%">
-                            <div class="battery-inner">
-                                <div class="battery-pct" id="batteryPctCircle">85%</div>
-                                <div class="battery-time" id="batteryTimeCircle">7h 15m</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="info-row">
-                        <div class="info-box">
-                            <div class="info-label">Mode</div>
-                            <div class="info-value" id="currentMode">Basic</div>
-                        </div>
-                        <div class="info-box">
-                            <div class="info-label">Signal</div>
-                            <div class="info-value" id="signalQuality">Strong</div>
-                        </div>
+                        <div class="big-num" id="battery">85%</div>
+                        <div class="sub" id="batteryTime">Calculating...</div>
                     </div>
                     
                     <div class="mode-toggle">
-                        <button class="mode-btn active" id="basicModeBtn" onclick="app.switchMode('basic')">⚡ Basic</button>
-                        <button class="mode-btn" id="proModeBtn" onclick="app.switchMode('pro')">🚀 Pro</button>
+                        <button class="mode-btn active" id="basicBtn" onclick="switchMode('basic')">⚡ Basic</button>
+                        <button class="mode-btn" id="proBtn" onclick="switchMode('pro')">🚀 Pro</button>
                     </div>
                     
-                    <div id="proControls" class="hidden">
-                        <div class="info-row">
-                            <div class="info-box">
-                                <div class="info-label">Active</div>
-                                <div class="info-value" id="activePercent">18%</div>
-                            </div>
-                            <div class="info-box">
-                                <div class="info-label">Standby</div>
-                                <div class="info-value" id="standbyPercent">82%</div>
-                            </div>
-                        </div>
-                        
-                        <div class="slider-wrap">
-                            <div class="slider-header">
-                                <span class="slider-label">Sensitivity</span>
-                                <span class="slider-value" id="sensitivityLabel">Medium</span>
-                            </div>
-                            <input type="range" class="slider" id="vadSlider" min="15" max="50" value="30" step="5" oninput="app.adjustVAD(this.value)">
-                            <div class="slider-marks">
-                                <span>High</span>
-                                <span>Low</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div id="transcriptionSection" class="hidden">
-                        <div class="lang-bar" onclick="app.toggleLanguage()">
-                            <span class="lang-label">🌐 Language</span>
-                            <span class="lang-value" id="currentLang">English ›</span>
-                        </div>
-                        
-                        <div class="messages" id="messageList"></div>
-                    </div>
-                    
-                    <button class="btn btn-primary" id="muteBtn" onclick="app.toggleMute()">
-                        <span id="muteIcon">🎤</span>
-                        <span id="muteText">Mute</span>
+                    <button class="btn btn-primary" id="muteBtn" onclick="toggleMute()">
+                        🎤 Mute
                     </button>
                     
-                    <button class="btn btn-secondary" onclick="app.disconnect()">
+                    <button class="btn btn-secondary" onclick="endSession()">
                         End Session
                     </button>
-                    
-                    <div class="note" id="transcriptionNote" class="hidden">
-                        Messages auto-clear in <span id="clearTimer">10</span> minutes
-                    </div>
                 </div>
-                
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script type="module">
-        // Dhvani-WT Core Application - Full Production Version
-        class DhvaniWT {
-            constructor() {
-                this.state = {
-                    role: null,
-                    mode: 'basic',
-                    connected: false,
-                    muted: false,
-                    sessionCode: null,
-                    batteryPercent: 85,
-                    language: 'en-IN',
-                    vadThreshold: 30,
-                    messages: [],
-                    activeTime: 0,
-                    totalTime: 0,
-                    transcriptionEnabled: false,
-                    isSpeaking: false
-                };
+    <script>
+        let state = {
+            connected: false,
+            muted: false,
+            mode: 'basic',
+            code: null,
+            peer: null,
+            call: null,
+            stream: null,
+            battery: 85
+        };
+        
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('time').textContent = 
+                now.getHours().toString().padStart(2, '0') + ':' + 
+                now.getMinutes().toString().padStart(2, '0');
+        }
+        
+        setInterval(updateTime, 60000);
+        updateTime();
+        
+        function generateCode() {
+            const letter = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+            const digits = Math.floor(1000 + Math.random() * 9000);
+            return letter + digits;
+        }
+        
+        async function startHost() {
+            try {
+                hideError();
+                state.code = generateCode();
+                document.getElementById('sessionCode').textContent = state.code;
+                showScreen('codeScreen');
                 
-                // WebRTC
-                this.peer = null;
-                this.connection = null;
-                this.call = null;
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                state.stream = stream;
                 
-                // Audio
-                this.localStream = null;
-                this.remoteStream = null;
-                this.audioContext = null;
-                this.analyser = null;
-                this.lowPowerStream = null;
+                state.peer = new Peer(state.code + '-host');
                 
-                // VAD (Voice Activity Detection)
-                this.vadEngine = null;
-                this.vadCheckInterval = null;
-                this.silenceTimer = null;
-                
-                // Speech Recognition
-                this.recognition = null;
-                this.synthesis = null;
-                
-                // Music Ducking
-                this.musicDuckingEnabled = true;
-                this.originalVolume = 1.0;
-                
-                // Phone Call Detection
-                this.callDetectionActive = false;
-                
-                this.init();
-            }
-            
-            init() {
-                this.updateTime();
-                setInterval(() => this.updateTime(), 60000);
-                this.monitorBattery();
-                this.setupMessageCleanup();
-                this.setupCallDetection();
-                this.setupVisibilityChange();
-            }
-            
-            updateTime() {
-                const now = new Date();
-                const hours = now.getHours().toString().padStart(2, '0');
-                const minutes = now.getMinutes().toString().padStart(2, '0');
-                document.getElementById('time').textContent = `${hours}:${minutes}`;
-            }
-            
-            generateCode() {
-                // Secure random code generation
-                const array = new Uint32Array(1);
-                crypto.getRandomValues(array);
-                const letter = String.fromCharCode(65 + (array[0] % 26));
-                const digits = (1000 + (array[0] % 9000)).toString();
-                return `${letter}${digits}`;
-            }
-            
-            async startHost() {
-                try {
-                    this.hideError();
-                    this.state.role = 'host';
-                    this.state.sessionCode = this.generateCode();
-                    
-                    document.getElementById('sessionCode').textContent = this.state.sessionCode;
-                    this.showScreen('codeScreen');
-                    
-                    await this.requestMicrophone();
-                    await this.initializeConnection();
-                    
-                    // Auto-hide code after 5 seconds
-                    setTimeout(() => {
-                        document.getElementById('codeScreen').classList.add('hidden');
-                        this.showDashboard();
-                    }, 5000);
-                    
-                } catch (error) {
-                    this.showError('Failed to start: ' + error.message);
-                    console.error(error);
-                }
-            }
-            
-            async startJoin() {
-                try {
-                    this.hideError();
-                    const code = document.getElementById('joinCode').value.trim().toUpperCase();
-                    
-                    if (!code || !code.match(/^[A-Z]\d{4}$/)) {
-                        this.showError('Please enter a valid code (e.g., A1234)');
-                        return;
-                    }
-                    
-                    this.state.role = 'join';
-                    this.state.sessionCode = code;
-                    
-                    await this.requestMicrophone();
-                    await this.initializeConnection();
-                    
-                } catch (error) {
-                    this.showError('Failed to join: ' + error.message);
-                    console.error(error);
-                }
-            }
-            
-            async requestMicrophone() {
-                try {
-                    const constraints = this.state.mode === 'pro' && !this.state.isSpeaking ? {
-                        audio: {
-                            echoCancellation: false,
-                            noiseSuppression: false,
-                            autoGainControl: false,
-                            sampleRate: 8000,
-                            channelCount: 1
-                        }
-                    } : {
-                        audio: {
-                            echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: true,
-                            sampleRate: 48000,
-                            channelCount: 2
-                        }
-                    };
-                    
-                    this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                    this.setupAudioAnalysis();
-                    
-                    if (this.state.mode === 'pro') {
-                        this.startProtocolVAD();
-                    }
-                    
-                } catch (error) {
-                    throw new Error('Microphone access denied. Enable in Settings → Safari → Microphone');
-                }
-            }
-            
-            setupAudioAnalysis() {
-                try {
-                    if (!this.audioContext) {
-                        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    }
-                    
-                    this.analyser = this.audioContext.createAnalyser();
-                    this.analyser.fftSize = 256;
-                    
-                    const source = this.audioContext.createMediaStreamSource(this.localStream);
-                    source.connect(this.analyser);
-                    
-                    this.startVADMonitoring();
-                } catch (error) {
-                    console.error('Audio analysis setup failed:', error);
-                }
-            }
-            
-            startVADMonitoring() {
-                const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-                
-                const checkVAD = () => {
-                    if (!this.analyser || this.state.muted) return;
-                    
-                    this.analyser.getByteFrequencyData(dataArray);
-                    
-                    // Apply wind/helmet filtering (300Hz - 3400Hz range)
-                    const relevantBands = dataArray.slice(3, 30); // Focus on voice frequencies
-                    const average = relevantBands.reduce((a, b) => a + b, 0) / relevantBands.length;
-                    
-                    const isSpeaking = average > this.state.vadThreshold;
-                    
-                    if (isSpeaking !== this.state.isSpeaking) {
-                        this.state.isSpeaking = isSpeaking;
-                        this.handleVADChange(isSpeaking);
-                    }
-                    
-                    if (this.state.connected) {
-                        requestAnimationFrame(checkVAD);
-                    }
-                };
-                
-                checkVAD();
-            }
-            
-            handleVADChange(isSpeaking) {
-                if (isSpeaking) {
-                    this.state.activeTime++;
-                    
-                    // Duck music when speaking
-                    if (this.musicDuckingEnabled) {
-                        this.duckAudio(0.2); // Reduce to 20%
-                    }
-                    
-                    // Upgrade to full quality in Pro mode
-                    if (this.state.mode === 'pro' && this.call) {
-                        this.upgradeAudioQuality();
-                    }
-                    
-                    // Clear silence timer
-                    if (this.silenceTimer) {
-                        clearTimeout(this.silenceTimer);
-                        this.silenceTimer = null;
-                    }
-                } else {
-                    // Restore music volume after 2 seconds of silence
-                    this.silenceTimer = setTimeout(() => {
-                        if (this.musicDuckingEnabled) {
-                            this.duckAudio(1.0); // Restore to 100%
-                        }
-                        
-                        // Downgrade to low power in Pro mode
-                        if (this.state.mode === 'pro' && this.call) {
-                            this.downgradeAudioQuality();
-                        }
-                    }, 2000);
-                }
-            }
-            
-            async upgradeAudioQuality() {
-                if (!this.call) return;
-                
-                try {
-                    const newStream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: true,
-                            sampleRate: 48000,
-                            channelCount: 2
-                        }
+                state.peer.on('call', call => {
+                    call.answer(stream);
+                    call.on('stream', remoteStream => {
+                        playAudio(remoteStream);
+                        showDashboard();
                     });
-                    
-                    const sender = this.call.peerConnection.getSenders().find(s => s.track.kind === 'audio');
-                    if (sender) {
-                        await sender.replaceTrack(newStream.getAudioTracks()[0]);
-                    }
-                    
-                    // Stop old stream
-                    this.localStream.getTracks().forEach(track => track.stop());
-                    this.localStream = newStream;
-                    this.setupAudioAnalysis();
-                    
-                } catch (error) {
-                    console.error('Failed to upgrade audio:', error);
-                }
-            }
-            
-            async downgradeAudioQuality() {
-                if (!this.call) return;
-                
-                try {
-                    const newStream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            echoCancellation: false,
-                            noiseSuppression: false,
-                            autoGainControl: false,
-                            sampleRate: 8000,
-                            channelCount: 1
-                        }
-                    });
-                    
-                    const sender = this.call.peerConnection.getSenders().find(s => s.track.kind === 'audio');
-                    if (sender) {
-                        await sender.replaceTrack(newStream.getAudioTracks()[0]);
-                    }
-                    
-                    // Stop old stream
-                    this.localStream.getTracks().forEach(track => track.stop());
-                    this.localStream = newStream;
-                    this.setupAudioAnalysis();
-                    
-                } catch (error) {
-                    console.error('Failed to downgrade audio:', error);
-                }
-            }
-            
-            duckAudio(targetVolume) {
-                // Smoothly transition audio volume
-                const duration = 300; // ms
-                const steps = 10;
-                const stepTime = duration / steps;
-                
-                let currentStep = 0;
-                const startVolume = this.originalVolume;
-                const volumeChange = targetVolume - startVolume;
-                
-                const interval = setInterval(() => {
-                    currentStep++;
-                    const progress = currentStep / steps;
-                    const newVolume = startVolume + (volumeChange * progress);
-                    
-                    // Apply to all audio elements (music players)
-                    document.querySelectorAll('audio, video').forEach(element => {
-                        element.volume = Math.max(0, Math.min(1, newVolume));
-                    });
-                    
-                    if (currentStep >= steps) {
-                        clearInterval(interval);
-                        this.originalVolume = targetVolume;
-                    }
-                }, stepTime);
-            }
-            
-            startProtocolVAD() {
-                // Protocol-level VAD starts in low-power mode
-                // Upgrades to full quality when speaking detected
-                console.log('Protocol VAD enabled');
-            }
-            
-            async initializeConnection() {
-                try {
-                    const peerId = `${this.state.sessionCode}-${this.state.role}`;
-                    
-                    this.peer = new Peer(peerId, {
-                        debug: 0,
-                        config: {
-                            iceServers: [
-                                { urls: 'stun:stun.l.google.com:19302' },
-                                { urls: 'stun:global.stun.twilio.com:3478' }
-                            ]
-                        }
-                    });
-                    
-                    this.peer.on('open', (id) => {
-                        console.log('Peer opened:', id);
-                        
-                        if (this.state.role === 'host') {
-                            // Host waits for incoming call
-                            this.peer.on('call', (call) => {
-                                this.handleIncomingCall(call);
-                            });
-                        } else {
-                            // Join initiates call
-                            setTimeout(() => {
-                                this.initiateCall();
-                            }, 1000);
-                        }
-                    });
-                    
-                    this.peer.on('error', (error) => {
-                        console.error('Peer error:', error);
-                        if (error.type === 'peer-unavailable') {
-                            if (this.state.role === 'join') {
-                                setTimeout(() => this.initiateCall(), 3000);
-                            }
-                        } else {
-                            this.showError('Connection error: ' + error.type);
-                        }
-                    });
-                    
-                    this.peer.on('disconnected', () => {
-                        console.log('Peer disconnected, reconnecting...');
-                        setTimeout(() => {
-                            if (this.peer && !this.peer.destroyed) {
-                                this.peer.reconnect();
-                            }
-                        }, 2000);
-                    });
-                    
-                } catch (error) {
-                    throw new Error('Failed to initialize connection: ' + error.message);
-                }
-            }
-            
-            initiateCall() {
-                if (!this.peer || this.peer.destroyed) return;
-                
-                const remotePeerId = `${this.state.sessionCode}-host`;
-                console.log('Calling:', remotePeerId);
-                
-                this.call = this.peer.call(remotePeerId, this.localStream);
-                
-                this.call.on('stream', (remoteStream) => {
-                    this.handleRemoteStream(remoteStream);
+                    state.call = call;
                 });
                 
-                this.call.on('close', () => {
-                    this.handleCallClose();
-                });
+                setTimeout(() => {
+                    document.getElementById('codeScreen').classList.add('hidden');
+                    showDashboard();
+                }, 5000);
                 
-                this.call.on('error', (error) => {
-                    console.error('Call error:', error);
-                    this.showError('Cannot reach host. Make sure host connected first.');
-                });
-            }
-            
-            handleIncomingCall(call) {
-                console.log('Incoming call');
-                this.call = call;
-                
-                call.answer(this.localStream);
-                
-                call.on('stream', (remoteStream) => {
-                    this.handleRemoteStream(remoteStream);
-                });
-                
-                call.on('close', () => {
-                    this.handleCallClose();
-                });
-                
-                call.on('error', (error) => {
-                    console.error('Call error:', error);
-                });
-            }
-            
-            handleRemoteStream(stream) {
-                console.log('Remote stream received');
-                this.remoteStream = stream;
-                
-                // Play remote audio
-                const audio = new Audio();
-                audio.srcObject = stream;
-                audio.autoplay = true;
-                audio.volume = 1.0;
-                
-                audio.play().catch(error => {
-                    console.error('Audio playback error:', error);
-                });
-                
-                this.state.connected = true;
-                this.showDashboard();
-                this.startBatteryMonitoring();
-                
-                // Start transcription if enabled
-                if (this.state.transcriptionEnabled) {
-                    this.startTranscription();
-                }
-            }
-            
-            handleCallClose() {
-                console.log('Call closed');
-                this.state.connected = false;
-            }
-            
-            startTranscription() {
-                try {
-                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                    if (!SpeechRecognition) {
-                        console.warn('Speech recognition not supported');
-                        return;
-                    }
-                    
-                    this.recognition = new SpeechRecognition();
-                    this.recognition.continuous = true;
-                    this.recognition.interimResults = false;
-                    this.recognition.lang = this.state.language;
-                    
-                    this.recognition.onresult = (event) => {
-                        const last = event.results.length - 1;
-                        const transcript = event.results[last][0].transcript;
-                        this.addMessage('you', transcript);
-                    };
-                    
-                    this.recognition.onerror = (event) => {
-                        console.error('Speech recognition error:', event.error);
-                    };
-                    
-                    this.recognition.onend = () => {
-                        if (this.state.transcriptionEnabled && this.state.connected) {
-                            this.recognition.start();
-                        }
-                    };
-                    
-                    this.recognition.start();
-                    
-                    // Show transcription UI
-                    document.getElementById('transcriptionSection').classList.remove('hidden');
-                    document.getElementById('transcriptionNote').classList.remove('hidden');
-                    
-                } catch (error) {
-                    console.error('Transcription setup failed:', error);
-                }
-            }
-            
-            stopTranscription() {
-                if (this.recognition) {
-                    this.recognition.stop();
-                    this.recognition = null;
-                }
-                
-                document.getElementById('transcriptionSection').classList.add('hidden');
-                document.getElementById('transcriptionNote').classList.add('hidden');
-            }
-            
-            setupCallDetection() {
-                // Detect phone calls via visibility change
-                this.callDetectionActive = true;
-            }
-            
-            setupVisibilityChange() {
-                document.addEventListener('visibilitychange', () => {
-                    if (document.hidden && this.state.connected) {
-                        // Page hidden - might be phone call
-                        console.log('Page hidden - pausing intercom');
-                        this.pauseForCall();
-                    } else if (!document.hidden && this.state.connected) {
-                        // Page visible again - resume
-                        console.log('Page visible - resuming intercom');
-                        this.resumeFromCall();
-                    }
-                });
-            }
-            
-            pauseForCall() {
-                if (this.localStream) {
-                    this.localStream.getAudioTracks().forEach(track => {
-                        track.enabled = false;
-                    });
-                }
-                
-                if (this.recognition) {
-                    this.recognition.stop();
-                }
-            }
-            
-            resumeFromCall() {
-                if (this.localStream && !this.state.muted) {
-                    this.localStream.getAudioTracks().forEach(track => {
-                        track.enabled = true;
-                    });
-                }
-                
-                if (this.state.transcriptionEnabled && this.recognition) {
-                    this.recognition.start();
-                }
-            }
-            
-            showDashboard() {
-                this.showScreen('dashboardScreen');
-                this.updateBatteryDisplay();
-            }
-            
-            switchMode(mode) {
-                this.state.mode = mode;
-                
-                document.getElementById('basicModeBtn').classList.toggle('active', mode === 'basic');
-                document.getElementById('proModeBtn').classList.toggle('active', mode === 'pro');
-                
-                document.getElementById('basicHeader').classList.toggle('hidden', mode === 'pro');
-                document.getElementById('proHeader').classList.toggle('hidden', mode === 'basic');
-                document.getElementById('batteryDisplay').classList.toggle('hidden', mode === 'pro');
-                document.getElementById('batteryCircle').classList.toggle('hidden', mode === 'basic');
-                document.getElementById('proControls').classList.toggle('hidden', mode === 'basic');
-                
-                document.getElementById('currentMode').textContent = mode === 'basic' ? 'Basic' : 'Pro';
-                
-                this.updateBatteryDisplay();
-            }
-            
-            adjustVAD(value) {
-                this.state.vadThreshold = parseInt(value);
-                
-                let label = 'Medium';
-                if (value <= 20) label = 'Very High';
-                else if (value <= 25) label = 'High';
-                else if (value <= 35) label = 'Medium';
-                else if (value <= 45) label = 'Low';
-                else label = 'Very Low';
-                
-                document.getElementById('sensitivityLabel').textContent = label;
-            }
-            
-            toggleMute() {
-                this.state.muted = !this.state.muted;
-                
-                const icon = document.getElementById('muteIcon');
-                const text = document.getElementById('muteText');
-                const btn = document.getElementById('muteBtn');
-                
-                if (this.state.muted) {
-                    icon.textContent = '🔇';
-                    text.textContent = 'Unmute';
-                    btn.style.background = '#ef4444';
-                } else {
-                    icon.textContent = '🎤';
-                    text.textContent = 'Mute';
-                    btn.style.background = '#000';
-                }
-                
-                if (this.localStream) {
-                    this.localStream.getAudioTracks()[0].enabled = !this.state.muted;
-                }
-            }
-            
-            toggleLanguage() {
-                const langs = {
-                    'en-IN': 'English',
-                    'hi-IN': 'हिंदी',
-                    'mr-IN': 'मराठी'
-                };
-                
-                const keys = Object.keys(langs);
-                const currentIndex = keys.indexOf(this.state.language);
-                const nextIndex = (currentIndex + 1) % keys.length;
-                this.state.language = keys[nextIndex];
-                
-                document.getElementById('currentLang').textContent = langs[this.state.language] + ' ›';
-            }
-            
-            monitorBattery() {
-                if ('getBattery' in navigator) {
-                    navigator.getBattery().then(battery => {
-                        const updateBattery = () => {
-                            this.state.batteryPercent = Math.round(battery.level * 100);
-                            this.updateBatteryDisplay();
-                        };
-                        
-                        updateBattery();
-                        battery.addEventListener('levelchange', updateBattery);
-                    });
-                }
-            }
-            
-            startBatteryMonitoring() {
-                setInterval(() => {
-                    this.state.totalTime++;
-                    this.updateBatteryDisplay();
-                }, 60000);
-            }
-            
-            updateBatteryDisplay() {
-                const percent = this.state.batteryPercent;
-                const isPro = this.state.mode === 'pro';
-                
-                // Calculate remaining time based on mode
-                const drainRate = isPro ? 12 : 20; // % per hour
-                const hoursLeft = percent / drainRate;
-                const hours = Math.floor(hoursLeft);
-                const minutes = Math.round((hoursLeft - hours) * 60);
-                
-                const timeStr = `${hours}h ${minutes}m remaining`;
-                
-                document.getElementById('batteryPercent').textContent = `${percent}%`;
-                document.getElementById('batteryTime').textContent = timeStr;
-                document.getElementById('batteryPctCircle').textContent = `${percent}%`;
-                document.getElementById('batteryTimeCircle').textContent = `${hours}h ${minutes}m`;
-                
-                const circle = document.getElementById('batteryCircle');
-                circle.style.setProperty('--battery-percent', `${percent}%`);
-                
-                // Update active/standby percentages for Pro mode
-                if (isPro && this.state.totalTime > 0) {
-                    const activePercent = Math.round((this.state.activeTime / this.state.totalTime) * 100);
-                    const standbyPercent = 100 - activePercent;
-                    document.getElementById('activePercent').textContent = `${activePercent}%`;
-                    document.getElementById('standbyPercent').textContent = `${standbyPercent}%`;
-                }
-            }
-            
-            setupMessageCleanup() {
-                setInterval(() => {
-                    const now = Date.now();
-                    this.state.messages = this.state.messages.filter(msg => {
-                        return (now - msg.timestamp) < 600000; // 10 minutes
-                    });
-                    this.renderMessages();
-                }, 60000);
-            }
-            
-            addMessage(sender, text) {
-                this.state.messages.push({
-                    sender: sender,
-                    text: text,
-                    timestamp: Date.now()
-                });
-                
-                if (this.state.messages.length > 10) {
-                    this.state.messages.shift();
-                }
-                
-                this.renderMessages();
-            }
-            
-            renderMessages() {
-                const container = document.getElementById('messageList');
-                if (!container) return;
-                
-                container.innerHTML = '';
-                
-                this.state.messages.forEach(msg => {
-                    const div = document.createElement('div');
-                    div.className = `msg ${msg.sender === 'you' ? 'mine' : ''}`;
-                    
-                    const elapsed = Math.floor((Date.now() - msg.timestamp) / 60000);
-                    const timeStr = elapsed === 0 ? 'Now' : `${elapsed}m ago`;
-                    
-                    div.innerHTML = `
-                        <div class="msg-header">
-                            <span class="msg-sender">${msg.sender === 'you' ? 'You' : 'Them'}</span>
-                            <span class="msg-time">${timeStr}</span>
-                        </div>
-                        <div class="msg-text">${msg.text}</div>
-                    `;
-                    
-                    container.appendChild(div);
-                });
-                
-                container.scrollTop = container.scrollHeight;
-            }
-            
-            disconnect() {
-                if (confirm('End this session?')) {
-                    if (this.localStream) {
-                        this.localStream.getTracks().forEach(track => track.stop());
-                    }
-                    
-                    if (this.connection) {
-                        this.connection.close();
-                    }
-                    
-                    if (this.peer) {
-                        this.peer.destroy();
-                    }
-                    
-                    this.state = {
-                        role: null,
-                        mode: 'basic',
-                        connected: false,
-                        muted: false,
-                        sessionCode: null,
-                        batteryPercent: 85,
-                        language: 'en-IN',
-                        vadThreshold: 30,
-                        messages: [],
-                        activeTime: 0,
-                        totalTime: 0
-                    };
-                    
-                    this.showScreen('setupScreen');
-                    document.getElementById('joinCode').value = '';
-                }
-            }
-            
-            showScreen(screenId) {
-                document.getElementById('setupScreen').classList.add('hidden');
-                document.getElementById('codeScreen').classList.add('hidden');
-                document.getElementById('dashboardScreen').classList.add('hidden');
-                
-                document.getElementById(screenId).classList.remove('hidden');
-            }
-            
-            showError(message) {
-                const errorDiv = document.getElementById('setupError');
-                errorDiv.textContent = message;
-                errorDiv.classList.remove('hidden');
-            }
-            
-            hideError() {
-                document.getElementById('setupError').classList.add('hidden');
+            } catch (error) {
+                showError('Failed: ' + error.message);
             }
         }
         
-        // Initialize app
-        window.app = new DhvaniWT();
+        async function startJoin() {
+            try {
+                hideError();
+                const code = document.getElementById('joinCode').value.trim().toUpperCase();
+                
+                if (!code.match(/^[A-Z]\d{4}$/)) {
+                    showError('Invalid code format');
+                    return;
+                }
+                
+                state.code = code;
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                state.stream = stream;
+                
+                state.peer = new Peer(code + '-join');
+                
+                state.peer.on('open', () => {
+                    const call = state.peer.call(code + '-host', stream);
+                    call.on('stream', remoteStream => {
+                        playAudio(remoteStream);
+                        showDashboard();
+                    });
+                    state.call = call;
+                });
+                
+            } catch (error) {
+                showError('Failed: ' + error.message);
+            }
+        }
         
-        // Prevent accidental navigation
-        window.addEventListener('beforeunload', (e) => {
-            if (window.app.state.connected) {
+        function playAudio(stream) {
+            const audio = new Audio();
+            audio.srcObject = stream;
+            audio.autoplay = true;
+            audio.play();
+            state.connected = true;
+        }
+        
+        function switchMode(mode) {
+            state.mode = mode;
+            document.getElementById('basicBtn').classList.toggle('active', mode === 'basic');
+            document.getElementById('proBtn').classList.toggle('active', mode === 'pro');
+            updateBattery();
+        }
+        
+        function toggleMute() {
+            state.muted = !state.muted;
+            if (state.stream) {
+                state.stream.getAudioTracks()[0].enabled = !state.muted;
+            }
+            document.getElementById('muteBtn').textContent = state.muted ? '🔇 Unmute' : '🎤 Mute';
+            document.getElementById('muteBtn').style.background = state.muted ? '#ef4444' : '#000';
+        }
+        
+        function updateBattery() {
+            const rate = state.mode === 'pro' ? 12 : 20;
+            const hours = Math.floor(state.battery / rate);
+            const mins = Math.round((state.battery / rate - hours) * 60);
+            document.getElementById('battery').textContent = state.battery + '%';
+            document.getElementById('batteryTime').textContent = hours + 'h ' + mins + 'm remaining';
+        }
+        
+        function showDashboard() {
+            showScreen('dashboard');
+            updateBattery();
+            
+            if ('getBattery' in navigator) {
+                navigator.getBattery().then(battery => {
+                    state.battery = Math.round(battery.level * 100);
+                    updateBattery();
+                    battery.addEventListener('levelchange', () => {
+                        state.battery = Math.round(battery.level * 100);
+                        updateBattery();
+                    });
+                });
+            }
+        }
+        
+        function endSession() {
+            if (confirm('End session?')) {
+                if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+                if (state.call) state.call.close();
+                if (state.peer) state.peer.destroy();
+                state = { connected: false, muted: false, mode: 'basic', code: null, battery: 85 };
+                showScreen('setupScreen');
+                document.getElementById('joinCode').value = '';
+            }
+        }
+        
+        function showScreen(id) {
+            ['setupScreen', 'codeScreen', 'dashboard'].forEach(s => 
+                document.getElementById(s).classList.add('hidden')
+            );
+            document.getElementById(id).classList.remove('hidden');
+        }
+        
+        function showError(msg) {
+            document.getElementById('error').textContent = msg;
+            document.getElementById('error').classList.remove('hidden');
+        }
+        
+        function hideError() {
+            document.getElementById('error').classList.add('hidden');
+        }
+        
+        window.addEventListener('beforeunload', e => {
+            if (state.connected) {
                 e.preventDefault();
                 e.returnValue = '';
             }
         });
-        
-        // Demo: Add sample messages after 3 seconds in connected state
-        setTimeout(() => {
-            if (window.app.state.connected) {
-                window.app.addMessage('them', 'Hey, can you hear me?');
-                setTimeout(() => {
-                    window.app.addMessage('you', 'Yes, loud and clear!');
-                }, 2000);
-            }
-        }, 3000);
     </script>
 </body>
 </html>

@@ -7,23 +7,6 @@
     <title>Dhvani-WT</title>
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        .info-row { display: flex; gap: 12px; margin-bottom: 20px; }
-        .info-box { flex: 1; background: #f5f5f5; border-radius: 12px; padding: 16px; }
-        .info-label { font-size: 11px; color: #666; margin-bottom: 6px; text-transform: uppercase; }
-        .info-value { font-size: 20px; font-weight: 700; color: #000; }
-        .slider-wrap { margin: 20px 0; }
-        .slider-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
-        .slider-label { font-size: 14px; color: #666; }
-        .slider-value { font-size: 14px; font-weight: 700; }
-        .slider { -webkit-appearance: none; width: 100%; height: 4px; background: #e0e0e0; border-radius: 2px; outline: none; margin-bottom: 8px; }
-        .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: #000; border-radius: 50%; cursor: pointer; }
-        .slider-marks { display: flex; justify-content: space-between; font-size: 11px; color: #999; }
-        .lang-bar { background: #f5f5f5; border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; cursor: pointer; }
-        .messages { max-height: 250px; overflow-y: auto; margin-bottom: 16px; }
-        .msg { background: #f5f5f5; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
-        .msg.mine { background: #000; color: #fff; }
-        .msg-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; }
-        .msg-text { font-size: 14px; line-height: 1.4; }
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #000; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; position: relative; }
         body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(255,140,0,0.03) 35px, rgba(255,140,0,0.03) 70px), radial-gradient(circle at 20% 50%, rgba(255,165,0,0.05) 0%, transparent 50%); pointer-events: none; z-index: 0; }
@@ -51,9 +34,6 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
         .big-num { font-size: 60px; font-weight: 700; line-height: 1; margin: 12px 0; }
         .sub { font-size: 15px; color: #999; }
-        .mode-toggle { background: #f5f5f5; border-radius: 12px; padding: 4px; display: flex; gap: 4px; margin-bottom: 20px; }
-        .mode-btn { flex: 1; height: 44px; background: transparent; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; color: #666; cursor: pointer; }
-        .mode-btn.active { background: #000; color: #fff; }
         .hidden { display: none !important; }
         .error { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 12px; padding: 16px; margin-bottom: 20px; color: #ef4444; font-size: 14px; }
         .code-display { background: #f5f5f5; border-radius: 12px; padding: 30px 20px; text-align: center; margin-bottom: 20px; }
@@ -108,44 +88,11 @@
                         <div class="big-num" id="battery">--</div>
                         <div class="sub" id="batteryTime">Calculating...</div>
                     </div>
-                    <div class="info-row" id="proStats" class="hidden">
-                        <div class="info-box">
-                            <div class="info-label">Active</div>
-                            <div class="info-value" id="activePercent">0%</div>
-                        </div>
-                        <div class="info-box">
-                            <div class="info-label">Standby</div>
-                            <div class="info-value" id="standbyPercent">100%</div>
-                        </div>
-                    </div>
-                    <div class="mode-toggle">
-                        <button class="mode-btn active" id="basicBtn" onclick="app.switchMode('basic')">⚡ Basic</button>
-                        <button class="mode-btn" id="proBtn" onclick="app.switchMode('pro')">🚀 Pro</button>
-                    </div>
-                    <div id="proControls" class="hidden">
-                        <div class="slider-wrap">
-                            <div class="slider-header">
-                                <span class="slider-label">VAD Sensitivity</span>
-                                <span class="slider-value" id="vadLabel">Medium</span>
-                            </div>
-                            <input type="range" class="slider" id="vadSlider" min="15" max="50" value="30" step="5" oninput="app.adjustVAD(this.value)">
-                            <div class="slider-marks">
-                                <span>High</span>
-                                <span>Low</span>
-                            </div>
-                        </div>
-                        <div class="lang-bar" onclick="app.toggleLanguage()">
-                            <span style="font-size: 14px; color: #666;">🌐 Language</span>
-                            <span style="font-size: 15px; font-weight: 600;" id="langValue">English ›</span>
-                        </div>
-                        <div class="messages" id="messageList"></div>
-                    </div>
                     <button class="btn btn-primary" id="muteBtn" onclick="app.toggleMute()">
                         <span id="muteIcon">🎤</span>
                         <span id="muteText">Mute</span>
                     </button>
                     <button class="btn btn-secondary" onclick="app.endSession()">End Session</button>
-                    <div class="note" id="transcriptNote" class="hidden">Messages auto-clear in 10 minutes</div>
                 </div>
             </div>
         </div>
@@ -155,7 +102,6 @@
             state: {
                 connected: false,
                 muted: false,
-                mode: 'basic',
                 role: null,
                 code: null,
                 peer: null,
@@ -163,25 +109,16 @@
                 localStream: null,
                 remoteStream: null,
                 battery: null,
-                vadThreshold: 30,
-                isSpeaking: false,
                 audioContext: null,
-                analyser: null,
-                recognition: null,
-                transcriptionEnabled: false,
-                language: 'en-IN',
-                messages: [],
                 audioElements: [],
-                originalVolumes: new Map(),
-                ducking: false,
-                modeSwitchTimeout: null
+                originalVolumes: new Map()
             },
             init() {
                 this.updateTime();
                 setInterval(() => this.updateTime(), 60000);
                 this.initBatteryMonitor();
-                this.setupMusicDucking();
-                this.setupCallDetection();
+                this.setupAudioContext();
+                this.setupBackgroundKeepAlive();
                 document.getElementById('joinCode').addEventListener('input', (e) => {
                     e.target.value = e.target.value.toUpperCase();
                 });
@@ -218,8 +155,7 @@
                     this.updateBatteryDisplay();
                     setInterval(() => {
                         if (this.state.connected && this.state.battery.level > 0.1) {
-                            const drainRate = this.state.mode === 'pro' ? 0.002 : 0.0033;
-                            this.state.battery.level = Math.max(0.1, this.state.battery.level - drainRate);
+                            this.state.battery.level = Math.max(0.1, this.state.battery.level - 0.0033);
                             this.updateBatteryDisplay();
                         }
                     }, 60000);
@@ -228,14 +164,38 @@
             updateBatteryDisplay() {
                 if (!this.state.battery) return;
                 const percent = Math.round(this.state.battery.level * 100);
-                const rate = this.state.mode === 'pro' ? 12 : 20;
-                const hoursLeft = percent / rate;
+                const hoursLeft = percent / 20;
                 const hours = Math.floor(hoursLeft);
                 const mins = Math.round((hoursLeft - hours) * 60);
                 document.getElementById('battery').textContent = percent + '%';
                 document.getElementById('batteryTime').textContent = 
                     this.state.battery.charging ? 'Charging' : 
                     hours > 0 ? `${hours}h ${mins}m remaining` : `${mins}m remaining`;
+            },
+            setupAudioContext() {
+                try {
+                    this.state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    this.state.audioContext.onstatechange = () => {
+                        if (this.state.audioContext.state === 'suspended' && this.state.connected) {
+                            this.state.audioContext.resume().catch(err => console.error('Audio context resume failed:', err));
+                        }
+                    };
+                    setInterval(() => this.monitorAudioElements(), 1000);
+                } catch (error) {
+                    console.error('Audio context setup failed:', error);
+                }
+            },
+            monitorAudioElements() {
+                const allMedia = document.querySelectorAll('audio, video');
+                allMedia.forEach(element => {
+                    if (!this.state.audioElements.includes(element)) {
+                        this.state.audioElements.push(element);
+                        if (!this.state.originalVolumes.has(element)) {
+                            this.state.originalVolumes.set(element, element.volume);
+                            element.volume = Math.max(0, Math.min(1, element.volume * 0.8)); // 25% quieter
+                        }
+                    }
+                });
             },
             async startHost() {
                 try {
@@ -380,7 +340,9 @@
                 const audio = new Audio();
                 audio.srcObject = stream;
                 audio.volume = 1.0;
+                audio.playsinline = true;
                 const playAudio = () => {
+                    this.state.audioContext.resume().catch(err => console.error('Audio context resume failed:', err));
                     audio.play()
                         .then(() => console.log('✅ Remote audio playing'))
                         .catch(err => {
@@ -399,307 +361,36 @@
                 };
                 playAudio();
                 document.body.addEventListener('click', playAudio, { once: true });
+                document.body.addEventListener('touchstart', playAudio, { once: true });
                 this.state.connected = true;
                 console.log('✅ CONNECTION ESTABLISHED!');
-                this.setupVAD();
                 this.showScreen('dashboard');
                 this.updateBatteryDisplay();
                 this.monitorAudioElements();
                 console.log('🎉 All systems ready!');
             },
-            setupVAD() {
-                if (!this.state.localStream) return;
-                try {
-                    this.state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    this.state.analyser = this.state.audioContext.createAnalyser();
-                    this.state.analyser.fftSize = 256;
-                    const source = this.state.audioContext.createMediaStreamSource(this.state.localStream);
-                    source.connect(this.state.analyser);
-                    this.startVADMonitoring();
-                } catch (error) {
-                    console.error('VAD setup failed:', error);
-                }
-            },
-            startVADMonitoring() {
-                const dataArray = new Uint8Array(this.state.analyser.frequencyBinCount);
-                let activeTime = 0;
-                let totalTime = 0;
-                const checkVAD = () => {
-                    if (!this.state.analyser || this.state.muted || !this.state.connected) return;
-                    this.state.analyser.getByteFrequencyData(dataArray);
-                    const relevantBands = dataArray.slice(3, 30);
-                    const average = relevantBands.reduce((a, b) => a + b, 0) / relevantBands.length;
-                    const wasSpeaking = this.state.isSpeaking;
-                    this.state.isSpeaking = average > this.state.vadThreshold;
-                    totalTime++;
-                    if (this.state.isSpeaking) activeTime++;
-                    if (totalTime % 100 === 0 && this.state.mode === 'pro') {
-                        const activePct = Math.round((activeTime / totalTime) * 100);
-                        document.getElementById('activePercent').textContent = Math.min(activePct, 99) + '%';
-                        document.getElementById('standbyPercent').textContent = Math.max(100 - activePct, 1) + '%';
-                    }
-                    if (this.state.isSpeaking && !wasSpeaking) this.onSpeechStart();
-                    else if (!this.state.isSpeaking && wasSpeaking) this.onSpeechEnd();
-                };
-                setInterval(checkVAD, 100);
-            },
-            onSpeechStart() {
-                this.duckMusic(0.2);
-                if (this.state.mode === 'pro') this.upgradeAudioQuality();
-            },
-            onSpeechEnd() {
-                setTimeout(() => {
-                    if (!this.state.isSpeaking) {
-                        this.duckMusic(1.0);
-                        if (this.state.mode === 'pro') this.downgradeAudioQuality();
-                    }
-                }, 2000);
-            },
-            async upgradeAudioQuality() {
-                if (!this.state.call || this.state.mode !== 'pro') return;
-                try {
-                    const newStream = await navigator.mediaDevices.getUserMedia({
-                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000 }
-                    });
-                    const sender = this.state.call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
-                    if (sender) {
-                        await sender.replaceTrack(newStream.getAudioTracks()[0]);
-                        this.state.localStream.getTracks().forEach(track => track.stop());
-                        this.state.localStream = newStream;
-                        this.setupVAD();
-                        this.state.call.peerConnection.createOffer()
-                            .then(offer => this.state.call.peerConnection.setLocalDescription(offer))
-                            .catch(err => console.error('ICE renegotiation failed:', err));
-                    }
-                } catch (error) {
-                    console.error('Upgrade audio failed:', error);
-                }
-            },
-            async downgradeAudioQuality() {
-                if (!this.state.call || this.state.mode !== 'pro') return;
-                try {
-                    const newStream = await navigator.mediaDevices.getUserMedia({
-                        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 8000 }
-                    });
-                    const sender = this.state.call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
-                    if (sender) {
-                        await sender.replaceTrack(newStream.getAudioTracks()[0]);
-                        this.state.localStream.getTracks().forEach(track => track.stop());
-                        this.state.localStream = newStream;
-                        this.setupVAD();
-                        this.state.call.peerConnection.createOffer()
-                            .then(offer => this.state.call.peerConnection.setLocalDescription(offer))
-                            .catch(err => console.error('ICE renegotiation failed:', err));
-                    }
-                } catch (error) {
-                    console.error('Downgrade audio failed:', error);
-                }
-            },
-            setupMusicDucking() {
+            setupBackgroundKeepAlive() {
                 setInterval(() => {
-                    if (this.state.connected) this.monitorAudioElements();
+                    if (this.state.connected && this.state.peer && !this.state.peer.destroyed) {
+                        this.state.peer.reconnect();
+                    }
+                    if (this.state.audioContext && this.state.audioContext.state === 'suspended') {
+                        this.state.audioContext.resume().catch(err => console.error('Audio context resume failed:', err));
+                    }
+                    if (this.state.localStream && !this.state.muted) {
+                        this.state.localStream.getAudioTracks().forEach(track => track.enabled = true);
+                    }
                 }, 1000);
-                try {
-                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    audioCtx.onstatechange = () => {
-                        if (audioCtx.state === 'suspended' && this.state.connected) {
-                            audioCtx.resume().catch(err => console.error('Audio context resume failed:', err));
-                        }
-                    };
-                } catch (error) {
-                    console.error('Audio context setup failed:', error);
-                }
-            },
-            monitorAudioElements() {
-                const allMedia = document.querySelectorAll('audio, video');
-                allMedia.forEach(element => {
-                    if (!this.state.audioElements.includes(element)) {
-                        this.state.audioElements.push(element);
-                        if (!this.state.originalVolumes.has(element)) {
-                            this.state.originalVolumes.set(element, element.volume);
-                        }
-                    }
-                });
-            },
-            duckMusic(targetVolume) {
-                if (this.state.ducking && targetVolume === 1.0) {
-                    this.state.ducking = false;
-                } else if (!this.state.ducking && targetVolume < 1.0) {
-                    this.state.ducking = true;
-                }
-                this.state.audioElements.forEach(element => {
-                    if (!element.paused) {
-                        const original = this.state.originalVolumes.get(element) || 1.0;
-                        const target = original * targetVolume;
-                        this.smoothVolumeTransition(element, element.volume, target, 300);
-                    }
-                });
-            },
-            smoothVolumeTransition(element, start, end, duration) {
-                const steps = 10;
-                const stepDuration = duration / steps;
-                const volumeStep = (end - start) / steps;
-                let currentStep = 0;
-                const interval = setInterval(() => {
-                    currentStep++;
-                    element.volume = Math.max(0, Math.min(1, start + (volumeStep * currentStep)));
-                    if (currentStep >= steps) clearInterval(interval);
-                }, stepDuration);
-            },
-            setupCallDetection() {
                 document.addEventListener('visibilitychange', () => {
-                    if (document.hidden && this.state.connected && /Mobi|Android/i.test(navigator.userAgent)) {
-                        this.pauseForCall();
-                    } else if (!document.hidden && this.state.connected) {
-                        this.resumeFromCall();
-                        if (this.state.localStream) this.setupVAD();
-                        if (this.state.mode === 'pro' && !this.state.transcriptionEnabled) {
-                            this.startTranscription();
+                    if (!document.hidden && this.state.connected) {
+                        if (this.state.audioContext) {
+                            this.state.audioContext.resume().catch(err => console.error('Audio context resume failed:', err));
+                        }
+                        if (this.state.localStream && !this.state.muted) {
+                            this.state.localStream.getAudioTracks().forEach(track => track.enabled = true);
                         }
                     }
                 });
-            },
-            pauseForCall() {
-                if (this.state.localStream) {
-                    this.state.localStream.getAudioTracks().forEach(track => track.enabled = false);
-                }
-                if (this.state.recognition) this.state.recognition.stop();
-            },
-            resumeFromCall() {
-                if (this.state.localStream && !this.state.muted) {
-                    this.state.localStream.getAudioTracks().forEach(track => track.enabled = true);
-                }
-                if (this.state.transcriptionEnabled && this.state.recognition) {
-                    this.state.recognition.start();
-                }
-            },
-            startTranscription() {
-                try {
-                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                    if (!SpeechRecognition) {
-                        console.warn('Speech recognition not supported');
-                        return;
-                    }
-                    this.state.recognition = new SpeechRecognition();
-                    this.state.recognition.continuous = true;
-                    this.state.recognition.interimResults = false;
-                    this.state.recognition.lang = this.state.language;
-                    this.state.recognition.onresult = (event) => {
-                        const last = event.results.length - 1;
-                        const transcript = event.results[last][0].transcript;
-                        this.addMessage('you', transcript);
-                    };
-                    this.state.recognition.onerror = (event) => {
-                        console.error('Speech recognition error:', event.error);
-                        if (event.error !== 'no-speech') {
-                            setTimeout(() => {
-                                if (this.state.transcriptionEnabled) this.state.recognition.start();
-                            }, 1000);
-                        }
-                    };
-                    this.state.recognition.onend = () => {
-                        if (this.state.transcriptionEnabled && this.state.connected) {
-                            this.state.recognition.start();
-                        }
-                    };
-                    this.state.recognition.start();
-                    this.state.transcriptionEnabled = true;
-                    document.getElementById('proControls').classList.remove('hidden');
-                    document.getElementById('transcriptNote').classList.remove('hidden');
-                } catch (error) {
-                    console.error('Transcription setup failed:', error);
-                }
-            },
-            stopTranscription() {
-                if (this.state.recognition) {
-                    this.state.recognition.stop();
-                    this.state.recognition = null;
-                }
-                this.state.transcriptionEnabled = false;
-                this.state.messages = [];
-                this.renderMessages();
-            },
-            addMessage(sender, text) {
-                this.state.messages.push({
-                    sender: sender,
-                    text: text,
-                    timestamp: Date.now()
-                });
-                if (this.state.messages.length > 10) this.state.messages.shift();
-                this.renderMessages();
-                setTimeout(() => {
-                    this.state.messages = this.state.messages.filter(m => Date.now() - m.timestamp < 600000);
-                    this.renderMessages();
-                }, 600000);
-            },
-            renderMessages() {
-                const container = document.getElementById('messageList');
-                if (!container) return;
-                container.innerHTML = '';
-                this.state.messages.forEach(msg => {
-                    const div = document.createElement('div');
-                    div.className = `msg ${msg.sender === 'you' ? 'mine' : ''}`;
-                    const elapsed = Math.floor((Date.now() - msg.timestamp) / 60000);
-                    const timeStr = elapsed === 0 ? 'Now' : `${elapsed}m ago`;
-                    div.innerHTML = `
-                        <div class="msg-header">
-                            <span style="font-weight: 600;">${msg.sender === 'you' ? 'You' : 'Them'}</span>
-                            <span style="color: ${msg.sender === 'you' ? '#666' : '#999'};">${timeStr}</span>
-                        </div>
-                        <div class="msg-text">${this.escapeHtml(msg.text)}</div>
-                    `;
-                    container.appendChild(div);
-                });
-                container.scrollTop = container.scrollHeight;
-            },
-            escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            },
-            adjustVAD(value) {
-                this.state.vadThreshold = parseInt(value);
-                let label = 'Medium';
-                if (value <= 20) label = 'Very High';
-                else if (value <= 25) label = 'High';
-                else if (value <= 35) label = 'Medium';
-                else if (value <= 45) label = 'Low';
-                else label = 'Very Low';
-                document.getElementById('vadLabel').textContent = label;
-            },
-            toggleLanguage() {
-                const langs = { 'en-IN': 'English', 'hi-IN': 'हिंदी', 'mr-IN': 'मराठी' };
-                const keys = Object.keys(langs);
-                const currentIndex = keys.indexOf(this.state.language);
-                const nextIndex = (currentIndex + 1) % keys.length;
-                this.state.language = keys[nextIndex];
-                document.getElementById('langValue').textContent = langs[this.state.language] + ' ›';
-                if (this.state.recognition) {
-                    this.state.recognition.lang = this.state.language;
-                    this.state.recognition.stop();
-                    setTimeout(() => {
-                        if (this.state.transcriptionEnabled) this.state.recognition.start();
-                    }, 100);
-                }
-            },
-            switchMode(mode) {
-                if (this.state.mode === mode || this.state.modeSwitchTimeout) return;
-                this.state.modeSwitchTimeout = setTimeout(() => {
-                    this.state.mode = mode;
-                    document.getElementById('basicBtn').classList.toggle('active', mode === 'basic');
-                    document.getElementById('proBtn').classList.toggle('active', mode === 'pro');
-                    document.getElementById('proStats').classList.toggle('hidden', mode === 'basic');
-                    document.getElementById('proControls').classList.toggle('hidden', mode === 'basic');
-                    if (mode === 'pro') {
-                        if (this.state.connected && !this.state.transcriptionEnabled) {
-                            this.startTranscription();
-                        }
-                    } else {
-                        if (this.state.transcriptionEnabled) this.stopTranscription();
-                    }
-                    this.updateBatteryDisplay();
-                    this.state.modeSwitchTimeout = null;
-                }, 500);
             },
             toggleMute() {
                 this.state.muted = !this.state.muted;
@@ -745,23 +436,19 @@
                     this.state.peer.destroy();
                     this.state.peer = null;
                 }
-                if (this.state.recognition) {
-                    this.state.recognition.stop();
-                    this.state.recognition = null;
-                }
                 if (this.state.audioContext) {
                     this.state.audioContext.close();
                     this.state.audioContext = null;
                 }
-                this.duckMusic(1.0);
+                this.state.audioElements.forEach(element => {
+                    element.volume = this.state.originalVolumes.get(element) || 1.0;
+                });
                 this.state.connected = false;
                 this.state.muted = false;
                 this.state.code = null;
                 this.state.role = null;
-                this.state.isSpeaking = false;
-                this.state.transcriptionEnabled = false;
-                this.state.messages = [];
                 this.state.audioElements = [];
+                this.state.originalVolumes.clear();
             },
             showScreen(screenId) {
                 ['setupScreen', 'codeScreen', 'dashboard'].forEach(id => {

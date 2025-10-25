@@ -1,1 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Helmet Intercom</title>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        .container {
+            max-width: 400px;
+            width: 100%;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .icon {
+            font-size: 64px;
+            margin-bottom: 10px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        h1 {
+            font-size: 32px;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            color: #a0a0a0;
+            font-size: 14px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .status-label {
+            color: #a0a0a0;
+        }
+        
+        .status-value {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #666;
+        }
+        
+        .status-dot.connected {
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-message {
+            text-align: center;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        
+        .audio-level {
+            margin-bottom: 20px;
+        }
+        
+        .audio-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #a0a0a0;
+            margin-bottom: 8px;
+        }
+        
+        .audio-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .audio-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #34d399);
+            border-radius: 10px;
+            transition: width 0.1s ease;
+        }
+        
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            font-size: 14px;
+        }
+        
+        .error-icon {
+            color: #ef4444;
+            flex-shrink: 0;
+        }
+        
+        button {
+            width: 100%;
+            padding: 20px;
+            border: none;
+            border-radius: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .btn-driver {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+        }
+        
+        .btn-pillion {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            color: white;
+        }
+        
+        .btn-mute {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+        
+        .btn-unmute {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 16px;
+            padding: 15px;
+        }
+        
+        .instructions {
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid #3b82f6;
+            border-radius: 15px;
+            padding: 20px;
+        }
+        
+        .instructions h3 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #60a5fa;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .instructions ol {
+            padding-left: 20px;
+            font-size: 14px;
+            line-height: 1.8;
+            color: #d1d5db;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        
+        .instructions strong {
+            color: white;
+        }
+        
+        .tech-info {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            margin-top: 20px;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .emoji {
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="icon">📡</div>
+            <h1>Helmet Intercom</h1>
+            <p class="subtitle">Always-On Voice Link</p>
+        </div>
 
+        <div class="card">
+            <div class="status-row">
+                <span class="status-label">Status:</span>
+                <div class="status-value">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Offline</span>
+                </div>
+            </div>
+
+            <div id="audioLevel" class="audio-level hidden">
+                <div class="audio-label">
+                    <span>🔊</span>
+                    <span>Your Voice</span>
+                </div>
+                <div class="audio-bar">
+                    <div class="audio-bar-fill" id="audioBarFill" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="status-message" id="statusMessage">
+                Choose your position
+            </div>
+
+            <div id="errorDiv" class="error hidden">
+                <span class="error-icon">⚠️</span>
+                <span id="errorText"></span>
+            </div>
+
+            <div id="roleSelection">
+                <button class="btn-driver" onclick="startAsDriver()">
+                    <span class="emoji">🏍️</span>
+                    <span>DRIVER</span>
+                </button>
+                <button class="btn-pillion" onclick="startAsPillion()">
+                    <span class="emoji">👤</span>
+                    <span>PILLION</span>
+                </button>
+            </div>
+
+            <div id="connectedControls" class="hidden">
+                <button id="muteBtn" class="btn-mute" onclick="toggleMute()">
+                    <span id="muteIcon">🎤</span>
+                    <span id="muteText">MUTE</span>
+                </button>
+                <button class="btn-secondary" onclick="disconnect()">
+                    End Session
+                </button>
+            </div>
+
+            <div id="waitingControls" class="hidden">
+                <button class="btn-secondary" onclick="disconnect()">
+                    Cancel
+                </button>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>
+                <span>ℹ️</span>
+                <span>Quick Start</span>
+            </h3>
+            <ol>
+                <li><strong>Driver</strong>: Turn on Personal Hotspot</li>
+                <li><strong>Pillion</strong>: Connect to hotspot WiFi</li>
+                <li><strong>Driver</strong>: Tap DRIVER button first</li>
+                <li><strong>Pillion</strong>: Wait 5 sec, tap PILLION</li>
+                <li>Allow microphone when asked</li>
+                <li>Wait for connection - Ride safe! 🏔️</li>
+            </ol>
+        </div>
+
+        <div class="tech-info" id="techInfo"></div>
+    </div>
+
+    <script>
+        let peer = null;
+        let localStream = null;
+        let connection = null;
+        let audioContext = null;
+        let analyser = null;
+        let isMuted = false;
+        let isConnected = false;
+        let myRole = null;
+
+        const roomCode = 'himalaya-' + new Date().toISOString().split('T')[0];
+
+        function showError(message) {
+            document.getElementById('errorDiv').classList.remove('hidden');
+            document.getElementById('errorText').textContent = message;
+        }
+
+        function hideError() {
+            document.getElementById('errorDiv').classList.add('hidden');
+        }
+
+        function setStatus(message, connected = false) {
+            document.getElementById('statusMessage').textContent = message;
+            document.getElementById('statusText').textContent = connected ? 'Live' : 'Offline';
+            const dot = document.getElementById('statusDot');
+            if (connected) {
+                dot.classList.add('connected');
+            } else {
+                dot.classList.remove('connected');
+            }
+        }
+
+        function showRoleSelection() {
+            document.getElementById('roleSelection').classList.remove('hidden');
+            document.getElementById('connectedControls').classList.add('hidden');
+            document.getElementById('waitingControls').classList.add('hidden');
+        }
+
+        function showWaiting() {
+            document.getElementById('roleSelection').classList.add('hidden');
+            document.getElementById('connectedControls').classList.add('hidden');
+            document.getElementById('waitingControls').classList.remove('hidden');
+        }
+
+        function showConnected() {
+            document.getElementById('roleSelection').classList.add('hidden');
+            document.getElementById('connectedControls').classList.remove('hidden');
+            document.getElementById('waitingControls').classList.add('hidden');
+            document.getElementById('audioLevel').classList.remove('hidden');
+        }
+
+        async function requestMicrophone() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 48000
+                    }
+                });
+                localStream = stream;
+                setupAudioMonitoring(stream);
+                return true;
+            } catch (err) {
+                console.error('Microphone error:', err);
+                showError('Microphone access denied. Go to Settings > Safari > Microphone and allow access.');
+                return false;
+            }
+        }
+
+        function setupAudioMonitoring(stream) {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                function updateLevel() {
+                    if (analyser && !isMuted) {
+                        analyser.getByteFrequencyData(dataArray);
+                        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                        const level = Math.min(100, average * 2);
+                        document.getElementById('audioBarFill').style.width = level + '%';
+                    }
+                    requestAnimationFrame(updateLevel);
+                }
+                updateLevel();
+            } catch (err) {
+                console.error('Audio monitoring error:', err);
+            }
+        }
+
+        function initializePeer(role) {
+            myRole = role;
+            const myId = `${roomCode}-${role}`;
+            
+            peer = new Peer(myId, {
+                debug: 0,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:global.stun.twilio.com:3478' }
+                    ]
+                }
+            });
+
+            peer.on('open', (id) => {
+                console.log('Peer opened:', id);
+                document.getElementById('techInfo').textContent = `ID: ${role}`;
+                
+                if (role === 'driver') {
+                    setStatus('Waiting for pillion to connect...');
+                } else {
+                    setStatus('Connecting to driver...');
+                    setTimeout(() => connectToDriver(), 2000);
+                }
+            });
+
+            peer.on('call', (call) => {
+                console.log('Incoming call');
+                setStatus('Incoming call - answering...');
+                call.answer(localStream);
+
+                call.on('stream', (remoteStream) => {
+                    console.log('Remote stream received');
+                    playRemoteStream(remoteStream);
+                    isConnected = true;
+                    setStatus('🎙️ INTERCOM ACTIVE', true);
+                    showConnected();
+                    connection = call;
+                });
+
+                call.on('close', () => {
+                    console.log('Call closed');
+                    handleDisconnect();
+                });
+
+                call.on('error', (err) => {
+                    console.error('Call error:', err);
+                    showError('Connection error. Try reconnecting.');
+                });
+            });
+
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                if (err.type === 'peer-unavailable') {
+                    setStatus('Rider not found. Waiting...');
+                    if (role === 'pillion') {
+                        setTimeout(() => connectToDriver(), 3000);
+                    }
+                } else {
+                    showError('Connection error: ' + err.type);
+                }
+            });
+
+            peer.on('disconnected', () => {
+                console.log('Peer disconnected');
+                setStatus('Disconnected. Reconnecting...');
+                setTimeout(() => {
+                    if (peer && !peer.destroyed) {
+                        peer.reconnect();
+                    }
+                }, 2000);
+            });
+        }
+
+        function connectToDriver() {
+            if (!peer || peer.destroyed) return;
+
+            const driverId = `${roomCode}-driver`;
+            console.log('Calling driver:', driverId);
+            setStatus('Calling driver...');
+
+            const call = peer.call(driverId, localStream);
+
+            call.on('stream', (remoteStream) => {
+                console.log('Remote stream received');
+                playRemoteStream(remoteStream);
+                isConnected = true;
+                setStatus('🎙️ INTERCOM ACTIVE', true);
+                showConnected();
+                connection = call;
+            });
+
+            call.on('close', () => {
+                console.log('Call closed');
+                handleDisconnect();
+            });
+
+            call.on('error', (err) => {
+                console.error('Call error:', err);
+                showError('Cannot reach driver. Make sure driver connected first.');
+                setStatus('Connection failed');
+            });
+        }
+
+        function playRemoteStream(stream) {
+            const audio = document.createElement('audio');
+            audio.srcObject = stream;
+            audio.autoplay = true;
+            audio.volume = 1.0;
+            
+            audio.play().catch(err => {
+                console.error('Audio play error:', err);
+                // Try to play again after user interaction
+                document.body.addEventListener('click', () => {
+                    audio.play();
+                }, { once: true });
+            });
+        }
+
+        async function startAsDriver() {
+            hideError();
+            setStatus('Requesting microphone...');
+            showWaiting();
+            
+            const hasPermission = await requestMicrophone();
+            if (!hasPermission) {
+                showRoleSelection();
+                return;
+            }
+
+            setStatus('Initializing...');
+            initializePeer('driver');
+        }
+
+        async function startAsPillion() {
+            hideError();
+            setStatus('Requesting microphone...');
+            showWaiting();
+            
+            const hasPermission = await requestMicrophone();
+            if (!hasPermission) {
+                showRoleSelection();
+                return;
+            }
+
+            setStatus('Initializing...');
+            initializePeer('pillion');
+        }
+
+        function toggleMute() {
+            if (!localStream) return;
+
+            const audioTrack = localStream.getAudioTracks()[0];
+            audioTrack.enabled = !audioTrack.enabled;
+            isMuted = !audioTrack.enabled;
+
+            const btn = document.getElementById('muteBtn');
+            const icon = document.getElementById('muteIcon');
+            const text = document.getElementById('muteText');
+
+            if (isMuted) {
+                btn.className = 'btn-unmute';
+                icon.textContent = '🔇';
+                text.textContent = 'UNMUTE';
+                document.getElementById('audioBarFill').style.width = '0%';
+            } else {
+                btn.className = 'btn-mute';
+                icon.textContent = '🎤';
+                text.textContent = 'MUTE';
+            }
+        }
+
+        function handleDisconnect() {
+            isConnected = false;
+            setStatus('Connection lost. Reconnecting...', false);
+            showWaiting();
+        }
+
+        function disconnect() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            if (connection) {
+                connection.close();
+                connection = null;
+            }
+            if (peer) {
+                peer.destroy();
+                peer = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            isConnected = false;
+            isMuted = false;
+            myRole = null;
+            
+            setStatus('Choose your position', false);
+            showRoleSelection();
+            hideError();
+            document.getElementById('audioLevel').classList.add('hidden');
+            document.getElementById('techInfo').textContent = '';
+        }
+
+        // Prevent accidental navigation
+        window.addEventListener('beforeunload', (e) => {
+            if (isConnected) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    </script>
+</body>
+</html>

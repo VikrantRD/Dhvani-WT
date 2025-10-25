@@ -86,7 +86,11 @@
             align-items: center;
             justify-content: center;
             gap: 12px;
+            transition: all 0.2s;
         }
+        
+        .btn:active { transform: scale(0.98); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         
         .btn-primary { background: #000; color: #fff; }
         .btn-secondary { background: #f5f5f5; color: #000; }
@@ -124,7 +128,10 @@
             font-weight: 700;
             margin-bottom: 16px;
             text-transform: uppercase;
+            outline: none;
         }
+        
+        .input:focus { border-color: #000; background: #fff; }
         
         .card {
             background: #000;
@@ -203,20 +210,31 @@
         .code-display {
             background: #f5f5f5;
             border-radius: 12px;
-            padding: 20px;
+            padding: 30px 20px;
             text-align: center;
             margin-bottom: 20px;
         }
         
         .code {
-            font-size: 48px;
+            font-size: 56px;
             font-family: monospace;
             letter-spacing: 12px;
             font-weight: 700;
             color: #000;
+            margin: 20px 0;
         }
         
         .note { text-align: center; font-size: 12px; color: #999; margin-top: 12px; }
+        
+        .status-msg {
+            background: #f0f0f0;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -228,13 +246,14 @@
             </div>
             
             <div class="content">
+                <!-- Setup Screen -->
                 <div id="setupScreen">
                     <div class="hero">
                         <div class="app-name">DHVANI-WT</div>
                         <div class="app-subtitle">Always-On Voice</div>
                     </div>
                     
-                    <button class="btn btn-primary" onclick="startHost()">
+                    <button class="btn btn-primary" id="hostBtn" onclick="app.startHost()">
                         <span style="font-size: 24px;">📍</span>
                         <span>Host</span>
                     </button>
@@ -243,7 +262,7 @@
                     
                     <input type="text" id="joinCode" class="input" placeholder="A1234" maxlength="5">
                     
-                    <button class="btn btn-secondary" onclick="startJoin()">
+                    <button class="btn btn-secondary" id="joinBtn" onclick="app.startJoin()">
                         <span style="font-size: 24px;">🔗</span>
                         <span>Join</span>
                     </button>
@@ -251,37 +270,48 @@
                     <div id="error" class="error hidden"></div>
                 </div>
                 
+                <!-- Code Screen (Host waiting) -->
                 <div id="codeScreen" class="hidden">
                     <div class="code-display">
-                        <div style="font-size: 12px; color: #666; margin-bottom: 8px;">🔐 YOUR CODE</div>
+                        <div style="font-size: 12px; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">🔐 Your Session Code</div>
                         <div class="code" id="sessionCode">B4729</div>
-                        <div class="note">Share this with your partner</div>
+                        <div class="note">Share this code with your partner</div>
                     </div>
+                    
+                    <div class="status-msg" id="statusMsg">
+                        Waiting for partner to connect...
+                    </div>
+                    
+                    <button class="btn btn-secondary" onclick="app.cancel()">
+                        Cancel
+                    </button>
                 </div>
                 
+                <!-- Dashboard -->
                 <div id="dashboard" class="hidden">
                     <div class="card">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                            <span style="font-size: 13px; color: #999;">BATTERY</span>
+                            <span style="font-size: 13px; color: #999; text-transform: uppercase; letter-spacing: 1px;">Battery</span>
                             <div class="status-live">
                                 <span class="dot"></span>
                                 <span>LIVE</span>
                             </div>
                         </div>
-                        <div class="big-num" id="battery">85%</div>
+                        <div class="big-num" id="battery">--</div>
                         <div class="sub" id="batteryTime">Calculating...</div>
                     </div>
                     
                     <div class="mode-toggle">
-                        <button class="mode-btn active" id="basicBtn" onclick="switchMode('basic')">⚡ Basic</button>
-                        <button class="mode-btn" id="proBtn" onclick="switchMode('pro')">🚀 Pro</button>
+                        <button class="mode-btn active" id="basicBtn" onclick="app.switchMode('basic')">⚡ Basic</button>
+                        <button class="mode-btn" id="proBtn" onclick="app.switchMode('pro')">🚀 Pro</button>
                     </div>
                     
-                    <button class="btn btn-primary" id="muteBtn" onclick="toggleMute()">
-                        🎤 Mute
+                    <button class="btn btn-primary" id="muteBtn" onclick="app.toggleMute()">
+                        <span id="muteIcon">🎤</span>
+                        <span id="muteText">Mute</span>
                     </button>
                     
-                    <button class="btn btn-secondary" onclick="endSession()">
+                    <button class="btn btn-secondary" onclick="app.endSession()">
                         End Session
                     </button>
                 </div>
@@ -290,173 +320,369 @@
     </div>
 
     <script>
-        let state = {
-            connected: false,
-            muted: false,
-            mode: 'basic',
-            code: null,
-            peer: null,
-            call: null,
-            stream: null,
-            battery: 85
-        };
-        
-        function updateTime() {
-            const now = new Date();
-            document.getElementById('time').textContent = 
-                now.getHours().toString().padStart(2, '0') + ':' + 
-                now.getMinutes().toString().padStart(2, '0');
-        }
-        
-        setInterval(updateTime, 60000);
-        updateTime();
-        
-        function generateCode() {
-            const letter = String.fromCharCode(65 + Math.floor(Math.random() * 26));
-            const digits = Math.floor(1000 + Math.random() * 9000);
-            return letter + digits;
-        }
-        
-        async function startHost() {
-            try {
-                hideError();
-                state.code = generateCode();
-                document.getElementById('sessionCode').textContent = state.code;
-                showScreen('codeScreen');
+        const app = {
+            state: {
+                connected: false,
+                muted: false,
+                mode: 'basic',
+                role: null,
+                code: null,
+                peer: null,
+                call: null,
+                localStream: null,
+                remoteStream: null,
+                battery: null,
+                batteryMonitor: null
+            },
+            
+            init() {
+                this.updateTime();
+                setInterval(() => this.updateTime(), 60000);
+                this.initBatteryMonitor();
                 
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                state.stream = stream;
-                
-                state.peer = new Peer(state.code + '-host');
-                
-                state.peer.on('call', call => {
-                    call.answer(stream);
-                    call.on('stream', remoteStream => {
-                        playAudio(remoteStream);
-                        showDashboard();
-                    });
-                    state.call = call;
+                // Auto-uppercase join code input
+                document.getElementById('joinCode').addEventListener('input', (e) => {
+                    e.target.value = e.target.value.toUpperCase();
                 });
+            },
+            
+            updateTime() {
+                const now = new Date();
+                document.getElementById('time').textContent = 
+                    now.getHours().toString().padStart(2, '0') + ':' + 
+                    now.getMinutes().toString().padStart(2, '0');
+            },
+            
+            generateCode() {
+                const letter = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+                const digits = Math.floor(1000 + Math.random() * 9000);
+                return letter + digits;
+            },
+            
+            async initBatteryMonitor() {
+                if ('getBattery' in navigator) {
+                    try {
+                        const battery = await navigator.getBattery();
+                        this.state.battery = battery;
+                        this.updateBatteryDisplay();
+                        
+                        battery.addEventListener('levelchange', () => this.updateBatteryDisplay());
+                        battery.addEventListener('chargingchange', () => this.updateBatteryDisplay());
+                    } catch (error) {
+                        console.log('Battery API not available');
+                        // Fallback to simulated battery
+                        this.state.battery = { level: 0.85, charging: false };
+                        this.updateBatteryDisplay();
+                    }
+                } else {
+                    // Fallback for browsers without Battery API
+                    this.state.battery = { level: 0.85, charging: false };
+                    this.updateBatteryDisplay();
+                }
+            },
+            
+            updateBatteryDisplay() {
+                if (!this.state.battery) return;
                 
-                setTimeout(() => {
-                    document.getElementById('codeScreen').classList.add('hidden');
-                    showDashboard();
-                }, 5000);
+                const percent = Math.round(this.state.battery.level * 100);
+                const rate = this.state.mode === 'pro' ? 12 : 20;
+                const hoursLeft = percent / rate;
+                const hours = Math.floor(hoursLeft);
+                const mins = Math.round((hoursLeft - hours) * 60);
                 
-            } catch (error) {
-                showError('Failed: ' + error.message);
-            }
-        }
-        
-        async function startJoin() {
-            try {
-                hideError();
-                const code = document.getElementById('joinCode').value.trim().toUpperCase();
+                document.getElementById('battery').textContent = percent + '%';
                 
-                if (!code.match(/^[A-Z]\d{4}$/)) {
-                    showError('Invalid code format');
-                    return;
+                if (this.state.battery.charging) {
+                    document.getElementById('batteryTime').textContent = 'Charging';
+                } else {
+                    document.getElementById('batteryTime').textContent = 
+                        hours > 0 ? `${hours}h ${mins}m remaining` : `${mins}m remaining`;
+                }
+            },
+            
+            async startHost() {
+                try {
+                    this.hideError();
+                    
+                    // Disable button
+                    document.getElementById('hostBtn').disabled = true;
+                    document.getElementById('hostBtn').textContent = 'Starting...';
+                    
+                    // Request microphone first
+                    this.state.localStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        } 
+                    });
+                    
+                    // Generate code
+                    this.state.code = this.generateCode();
+                    this.state.role = 'host';
+                    
+                    // Show code screen
+                    document.getElementById('sessionCode').textContent = this.state.code;
+                    this.showScreen('codeScreen');
+                    
+                    // Initialize peer connection
+                    const peerId = `${this.state.code}-host`;
+                    this.state.peer = new Peer(peerId, {
+                        debug: 0,
+                        config: {
+                            iceServers: [
+                                { urls: 'stun:stun.l.google.com:19302' }
+                            ]
+                        }
+                    });
+                    
+                    this.state.peer.on('open', (id) => {
+                        console.log('Host peer opened:', id);
+                        document.getElementById('statusMsg').textContent = 'Waiting for partner to join...';
+                    });
+                    
+                    this.state.peer.on('call', (call) => {
+                        console.log('Incoming call from partner');
+                        document.getElementById('statusMsg').textContent = 'Partner connecting...';
+                        
+                        // Answer the call with our stream
+                        call.answer(this.state.localStream);
+                        
+                        call.on('stream', (remoteStream) => {
+                            console.log('Received remote stream');
+                            this.handleRemoteStream(remoteStream);
+                            this.state.call = call;
+                        });
+                        
+                        call.on('close', () => {
+                            console.log('Call closed');
+                            this.showError('Connection lost');
+                        });
+                    });
+                    
+                    this.state.peer.on('error', (error) => {
+                        console.error('Peer error:', error);
+                        this.showError('Connection error: ' + error.type);
+                    });
+                    
+                } catch (error) {
+                    console.error('Start host error:', error);
+                    this.showError('Failed to start: ' + error.message);
+                    this.cancel();
+                }
+            },
+            
+            async startJoin() {
+                try {
+                    this.hideError();
+                    
+                    const code = document.getElementById('joinCode').value.trim().toUpperCase();
+                    
+                    if (!code || !code.match(/^[A-Z]\d{4}$/)) {
+                        this.showError('Please enter a valid 5-character code (e.g., A1234)');
+                        return;
+                    }
+                    
+                    // Disable button
+                    document.getElementById('joinBtn').disabled = true;
+                    document.getElementById('joinBtn').textContent = 'Connecting...';
+                    
+                    // Request microphone
+                    this.state.localStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        } 
+                    });
+                    
+                    this.state.code = code;
+                    this.state.role = 'join';
+                    
+                    // Show status
+                    document.getElementById('statusMsg').textContent = 'Connecting to host...';
+                    this.showScreen('codeScreen');
+                    
+                    // Initialize peer
+                    const peerId = `${code}-join`;
+                    this.state.peer = new Peer(peerId, {
+                        debug: 0,
+                        config: {
+                            iceServers: [
+                                { urls: 'stun:stun.l.google.com:19302' }
+                            ]
+                        }
+                    });
+                    
+                    this.state.peer.on('open', (id) => {
+                        console.log('Join peer opened:', id);
+                        
+                        // Call the host
+                        setTimeout(() => {
+                            const call = this.state.peer.call(`${code}-host`, this.state.localStream);
+                            
+                            if (!call) {
+                                this.showError('Could not reach host. Make sure host connected first.');
+                                return;
+                            }
+                            
+                            call.on('stream', (remoteStream) => {
+                                console.log('Received remote stream');
+                                this.handleRemoteStream(remoteStream);
+                                this.state.call = call;
+                            });
+                            
+                            call.on('close', () => {
+                                console.log('Call closed');
+                                this.showError('Connection lost');
+                            });
+                            
+                            call.on('error', (error) => {
+                                console.error('Call error:', error);
+                                this.showError('Connection failed. Host may not be ready.');
+                            });
+                            
+                        }, 1000);
+                    });
+                    
+                    this.state.peer.on('error', (error) => {
+                        console.error('Peer error:', error);
+                        if (error.type === 'peer-unavailable') {
+                            this.showError('Host not found. Check the code and try again.');
+                        } else {
+                            this.showError('Connection error: ' + error.type);
+                        }
+                    });
+                    
+                } catch (error) {
+                    console.error('Start join error:', error);
+                    this.showError('Failed to connect: ' + error.message);
+                    this.cancel();
+                }
+            },
+            
+            handleRemoteStream(stream) {
+                this.state.remoteStream = stream;
+                
+                // Play remote audio
+                const audio = new Audio();
+                audio.srcObject = stream;
+                audio.autoplay = true;
+                audio.volume = 1.0;
+                audio.play().catch(err => console.error('Audio play error:', err));
+                
+                // Mark as connected
+                this.state.connected = true;
+                
+                // Show dashboard
+                this.showScreen('dashboard');
+                this.updateBatteryDisplay();
+            },
+            
+            switchMode(mode) {
+                this.state.mode = mode;
+                document.getElementById('basicBtn').classList.toggle('active', mode === 'basic');
+                document.getElementById('proBtn').classList.toggle('active', mode === 'pro');
+                this.updateBatteryDisplay();
+            },
+            
+            toggleMute() {
+                this.state.muted = !this.state.muted;
+                
+                if (this.state.localStream) {
+                    this.state.localStream.getAudioTracks().forEach(track => {
+                        track.enabled = !this.state.muted;
+                    });
                 }
                 
-                state.code = code;
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                state.stream = stream;
+                const icon = document.getElementById('muteIcon');
+                const text = document.getElementById('muteText');
+                const btn = document.getElementById('muteBtn');
                 
-                state.peer = new Peer(code + '-join');
-                
-                state.peer.on('open', () => {
-                    const call = state.peer.call(code + '-host', stream);
-                    call.on('stream', remoteStream => {
-                        playAudio(remoteStream);
-                        showDashboard();
-                    });
-                    state.call = call;
-                });
-                
-            } catch (error) {
-                showError('Failed: ' + error.message);
-            }
-        }
-        
-        function playAudio(stream) {
-            const audio = new Audio();
-            audio.srcObject = stream;
-            audio.autoplay = true;
-            audio.play();
-            state.connected = true;
-        }
-        
-        function switchMode(mode) {
-            state.mode = mode;
-            document.getElementById('basicBtn').classList.toggle('active', mode === 'basic');
-            document.getElementById('proBtn').classList.toggle('active', mode === 'pro');
-            updateBattery();
-        }
-        
-        function toggleMute() {
-            state.muted = !state.muted;
-            if (state.stream) {
-                state.stream.getAudioTracks()[0].enabled = !state.muted;
-            }
-            document.getElementById('muteBtn').textContent = state.muted ? '🔇 Unmute' : '🎤 Mute';
-            document.getElementById('muteBtn').style.background = state.muted ? '#ef4444' : '#000';
-        }
-        
-        function updateBattery() {
-            const rate = state.mode === 'pro' ? 12 : 20;
-            const hours = Math.floor(state.battery / rate);
-            const mins = Math.round((state.battery / rate - hours) * 60);
-            document.getElementById('battery').textContent = state.battery + '%';
-            document.getElementById('batteryTime').textContent = hours + 'h ' + mins + 'm remaining';
-        }
-        
-        function showDashboard() {
-            showScreen('dashboard');
-            updateBattery();
+                if (this.state.muted) {
+                    icon.textContent = '🔇';
+                    text.textContent = 'Unmute';
+                    btn.style.background = '#ef4444';
+                } else {
+                    icon.textContent = '🎤';
+                    text.textContent = 'Mute';
+                    btn.style.background = '#000';
+                }
+            },
             
-            if ('getBattery' in navigator) {
-                navigator.getBattery().then(battery => {
-                    state.battery = Math.round(battery.level * 100);
-                    updateBattery();
-                    battery.addEventListener('levelchange', () => {
-                        state.battery = Math.round(battery.level * 100);
-                        updateBattery();
-                    });
+            cancel() {
+                this.cleanup();
+                this.showScreen('setupScreen');
+                document.getElementById('hostBtn').disabled = false;
+                document.getElementById('hostBtn').innerHTML = '<span style="font-size: 24px;">📍</span><span>Host</span>';
+                document.getElementById('joinBtn').disabled = false;
+                document.getElementById('joinBtn').innerHTML = '<span style="font-size: 24px;">🔗</span><span>Join</span>';
+            },
+            
+            endSession() {
+                if (confirm('End this session?')) {
+                    this.cleanup();
+                    this.showScreen('setupScreen');
+                    document.getElementById('joinCode').value = '';
+                }
+            },
+            
+            cleanup() {
+                if (this.state.localStream) {
+                    this.state.localStream.getTracks().forEach(track => track.stop());
+                    this.state.localStream = null;
+                }
+                
+                if (this.state.remoteStream) {
+                    this.state.remoteStream.getTracks().forEach(track => track.stop());
+                    this.state.remoteStream = null;
+                }
+                
+                if (this.state.call) {
+                    this.state.call.close();
+                    this.state.call = null;
+                }
+                
+                if (this.state.peer) {
+                    this.state.peer.destroy();
+                    this.state.peer = null;
+                }
+                
+                this.state.connected = false;
+                this.state.muted = false;
+                this.state.code = null;
+                this.state.role = null;
+            },
+            
+            showScreen(screenId) {
+                ['setupScreen', 'codeScreen', 'dashboard'].forEach(id => {
+                    document.getElementById(id).classList.add('hidden');
                 });
+                document.getElementById(screenId).classList.remove('hidden');
+            },
+            
+            showError(msg) {
+                const errorEl = document.getElementById('error');
+                errorEl.textContent = msg;
+                errorEl.classList.remove('hidden');
+                
+                // Auto-hide after 5 seconds
+                setTimeout(() => this.hideError(), 5000);
+            },
+            
+            hideError() {
+                document.getElementById('error').classList.add('hidden');
             }
-        }
+        };
         
-        function endSession() {
-            if (confirm('End session?')) {
-                if (state.stream) state.stream.getTracks().forEach(t => t.stop());
-                if (state.call) state.call.close();
-                if (state.peer) state.peer.destroy();
-                state = { connected: false, muted: false, mode: 'basic', code: null, battery: 85 };
-                showScreen('setupScreen');
-                document.getElementById('joinCode').value = '';
-            }
-        }
+        // Initialize app
+        app.init();
         
-        function showScreen(id) {
-            ['setupScreen', 'codeScreen', 'dashboard'].forEach(s => 
-                document.getElementById(s).classList.add('hidden')
-            );
-            document.getElementById(id).classList.remove('hidden');
-        }
-        
-        function showError(msg) {
-            document.getElementById('error').textContent = msg;
-            document.getElementById('error').classList.remove('hidden');
-        }
-        
-        function hideError() {
-            document.getElementById('error').classList.add('hidden');
-        }
-        
-        window.addEventListener('beforeunload', e => {
-            if (state.connected) {
+        // Prevent accidental navigation
+        window.addEventListener('beforeunload', (e) => {
+            if (app.state.connected) {
                 e.preventDefault();
-                e.returnValue = '';
+                e.returnValue = 'You have an active connection';
             }
         });
     </script>

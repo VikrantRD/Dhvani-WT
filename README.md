@@ -1,4 +1,4 @@
-# helmet-intercom
+# Dhvani-WT
 WebRTC (Web Real-Time Communication)
 
 Browser-native technology for peer-to-peer audio/video
